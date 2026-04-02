@@ -1,0 +1,30 @@
+{
+  "files": {
+    "ignoreUnknown": true,
+    "ignore": [
+      "**/dist/**",
+      "Leonxlnx-claude-code/**",
+      "node_modules/**",
+      "shared/**",
+      "src/**"
+    ],
+    "include": [
+      "package.json",
+      "biome.json",
+      "tsconfig.json",
+      "tsconfig.base.json",
+      "tsconfig.check.json",
+      "apps/**/*",
+      "packages/**/*",
+      "tests/contracts/**/*",
+      "tests/integration/**/*"
+    ]
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space"
+  },
+  "linter": {
+    "enabled": true
+  }
+}

@@ -147,13 +147,14 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   process.stdout.write(
-    `Claw Dev Anthropic-compatible proxy listening on http://127.0.0.1:${PORT} (${PROVIDER}:${ACTIVE_MODEL})\n`,
+    `UncleCode Anthropic-compatible proxy listening on http://127.0.0.1:${PORT} (${PROVIDER}:${ACTIVE_MODEL})\n`,
   );
 });
 
 function resolveProvider(): CompatProvider {
   const raw = (
     process.env.ANTHROPIC_COMPAT_PROVIDER ??
+    process.env.UNCLECODE_PROVIDER ??
     process.env.CLAW_PROVIDER ??
     "openai"
   )
@@ -292,7 +293,7 @@ function buildModelInfo(id: string) {
   return {
     type: "model",
     id,
-    display_name: `${id} (${providerLabel(PROVIDER)} via Claw Dev proxy)`,
+    display_name: `${id} (${providerLabel(PROVIDER)} via UncleCode proxy)`,
     created_at: "2026-03-31T00:00:00Z",
   };
 }

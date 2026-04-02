@@ -1,0 +1,24 @@
+{
+  "name": "@unclecode/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "unclecode": "./dist/index.js"
+  },
+  "dependencies": {
+    "@unclecode/config-core": "file:../../packages/config-core",
+    "@unclecode/contracts": "file:../../packages/contracts",
+    "@unclecode/providers": "file:../../packages/providers",
+    "@unclecode/tui": "file:../../packages/tui",
+    "commander": "^13.1.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "source": "./src/index.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  }
+}

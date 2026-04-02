@@ -1,17 +1,16 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    "jsx": "react-jsx",
-    "strict": true,
-    "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "types": ["node"],
-    "resolveJsonModule": true,
-    "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": true
-  },
-  "include": ["src/**/*.ts", "src/**/*.tsx"]
+  "files": [],
+  "references": [
+    { "path": "packages/contracts" },
+    { "path": "packages/config-core" },
+    { "path": "packages/context-broker" },
+    { "path": "packages/policy-engine" },
+    { "path": "packages/session-store" },
+    { "path": "packages/runtime-broker" },
+    { "path": "packages/providers" },
+    { "path": "packages/mcp-host" },
+    { "path": "packages/orchestrator" },
+    { "path": "packages/tui" },
+    { "path": "apps/unclecode-cli" }
+  ]
 }

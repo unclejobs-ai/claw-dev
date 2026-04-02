@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false
+  },
+  "include": [
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "packages/**/*.ts",
+    "packages/**/*.tsx",
+    "tests/contracts/**/*.ts"
+  ],
+  "exclude": [
+    "**/dist/**",
+    "Leonxlnx-claude-code/**",
+    "node_modules/**",
+    "shared/**",
+    "src/**"
+  ]
+}

@@ -1,6 +1,6 @@
-# Claw Dev
+# UncleCode
 
-Claw Dev is a local multi-provider coding assistant launcher for the bundled terminal client in this repository. It gives you one entry point and lets you choose how model requests are resolved at startup:
+UncleCode is a local multi-provider coding assistant launcher for the bundled terminal client in this repository. It gives you one entry point and lets you choose how model requests are resolved at startup:
 
 - Anthropic account login or `ANTHROPIC_API_KEY`
 - OpenAI through a local Anthropic-compatible proxy
@@ -10,7 +10,7 @@ Claw Dev is a local multi-provider coding assistant launcher for the bundled ter
 - z.ai through a local Anthropic-compatible proxy
 - Ollama through a local Anthropic-compatible proxy
 
-Claw Dev is designed to feel like one tool rather than a provider-specific wrapper. The launcher, provider prompts, environment variables, and documentation are all centered around the `Claw Dev` name.
+UncleCode is designed to feel like one tool rather than a provider-specific wrapper. The launcher, provider prompts, environment variables, and documentation are all centered around the `UncleCode` name.
 
 ## Repository Layout
 
@@ -31,7 +31,7 @@ Use the bundled client with the normal Anthropic login flow or with `ANTHROPIC_A
 
 ### OpenAI
 
-Route requests through the local compatibility proxy. By default Claw Dev uses `OPENAI_API_KEY`. As an experimental fallback, it can also reuse an existing ChatGPT/Codex login from `~/.codex/auth.json` when available.
+Route requests through the local compatibility proxy. By default UncleCode uses `OPENAI_API_KEY`. As an experimental fallback, it can also reuse an existing ChatGPT/Codex login from `~/.codex/auth.json` when available.
 
 ### Gemini
 
@@ -86,7 +86,7 @@ Provider-specific requirements:
 
 ### Minimum project requirements
 
-These requirements apply to Claw Dev itself:
+These requirements apply to UncleCode itself:
 
 - Node.js 22+
 - enough free disk space for Node dependencies and any local model assets you choose to install
@@ -108,7 +108,7 @@ According to the official Ollama documentation:
 
 Official Ollama documentation explains that loaded models may run fully on GPU, fully in system memory, or split across CPU and GPU, and that actual memory use depends on the model you choose. The exact hardware requirement therefore depends primarily on model size.
 
-Practical guidance for Claw Dev users:
+Practical guidance for UncleCode users:
 
 - For small local coding models, 16 GB system RAM is a reasonable starting point
 - For smoother local work, 32 GB RAM is strongly preferred
@@ -142,32 +142,31 @@ npm install
 cp .env.example .env
 ```
 
-Editing `.env` is optional. Claw Dev can prompt for missing values interactively when it starts.
+Editing `.env` is optional. UncleCode can prompt for missing values interactively when it starts.
 
 ## Quick Start
 
-Start Claw Dev from the repository root on any platform:
+Start UncleCode from the repository root on any platform:
 
 ```bash
-npm run claw-dev
+npm run unclecode
 ```
 
-Or launch it directly from the bundled client directory on Windows:
+Or launch it directly through the UncleCode workspace script on Windows:
 
 ```powershell
-cd E:\myclaudecode\Leonxlnx-claude-code
-.\claw-dev.cmd
+cd E:\myclaudecode
+npm run unclecode
 ```
 
-Or launch it directly from the bundled client directory on macOS or Linux:
+Or launch it directly through the UncleCode workspace script on macOS or Linux:
 
 ```bash
-cd /path/to/myclaudecode/Leonxlnx-claude-code
-chmod +x ./claw-dev.sh
-./claw-dev.sh
+cd /path/to/myclaudecode
+npm run unclecode
 ```
 
-When Claw Dev starts, it shows a provider selector:
+When UncleCode starts, it shows a provider selector:
 
 1. Anthropic
 2. OpenAI
@@ -177,9 +176,9 @@ When Claw Dev starts, it shows a provider selector:
 6. z.ai
 7. Ollama
 
-If a required API key is missing, Claw Dev prompts for it.
+If a required API key is missing, UncleCode prompts for it.
 
-After you choose a provider, Claw Dev also lets you enter any model id you want for that session. You can press Enter to keep the suggested default, or type a custom model id such as:
+After you choose a provider, UncleCode also lets you enter any model id you want for that session. You can press Enter to keep the suggested default, or type a custom model id such as:
 
 - `gpt-4.1`
 - `gpt-4o-mini`
@@ -188,7 +187,7 @@ After you choose a provider, Claw Dev also lets you enter any model id you want 
 - `openai/o4-mini`
 - `qwen2.5-coder:14b`
 
-Claw Dev also narrows the bundled in-app `/model` picker to the provider-relevant model set for the current session where possible. Some labels may still reflect provider-specific naming, and any custom model id is still allowed through `--model`.
+UncleCode also narrows the bundled in-app `/model` picker to the provider-relevant model set for the current session where possible. Some labels may still reflect provider-specific naming, and any custom model id is still allowed through `--model`.
 
 ## Additional Cloud Provider Setup
 
@@ -222,9 +221,9 @@ OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-5.4
 ```
 
-If `~/.codex/auth.json` exists, Claw Dev can reuse that ChatGPT/Codex login as an experimental fallback. Example placeholder values such as `your_openai_api_key_here` are ignored. The in-app `/model` picker is filtered toward the active provider where possible, but provider-specific labels may still appear. Keyring-backed Codex auth is not supported yet.
+If `~/.codex/auth.json` exists, UncleCode can reuse that ChatGPT/Codex login as an experimental fallback. Example placeholder values such as `your_openai_api_key_here` are ignored. The in-app `/model` picker is filtered toward the active provider where possible, but provider-specific labels may still appear. Keyring-backed Codex auth is not supported yet.
 
-## How To Use Ollama With Claw Dev
+## How To Use Ollama With UncleCode
 
 ### 1. Install Ollama
 
@@ -262,11 +261,11 @@ The default local API base URL is:
 http://127.0.0.1:11434
 ```
 
-### 4. Start Claw Dev and choose Ollama
+### 4. Start UncleCode and choose Ollama
 
 ```powershell
 cd E:\myclaudecode
-npm run claw-dev
+npm run unclecode
 ```
 
 Then choose:
@@ -275,7 +274,7 @@ Then choose:
 4. Ollama
 ```
 
-Claw Dev will point the bundled client at the local compatibility proxy, and the proxy will forward requests to your Ollama server.
+UncleCode will point the bundled client at the local compatibility proxy, and the proxy will forward requests to your Ollama server.
 
 ### 5. Optional environment configuration
 
@@ -293,7 +292,7 @@ OLLAMA_NUM_PREDICT=128
 Notes:
 
 - `OLLAMA_BASE_URL` should point to your Ollama server
-- `OLLAMA_MODEL` is the model name Claw Dev will request
+- `OLLAMA_MODEL` is the model name UncleCode will request
 - `OLLAMA_API_KEY` is not required for local Ollama on `localhost`
 - `OLLAMA_API_KEY` is only relevant if you are targeting an authenticated remote Ollama endpoint or the hosted Ollama API
 - `OLLAMA_KEEP_ALIVE` keeps the model loaded between turns, which reduces repeated warm-up time
@@ -310,7 +309,7 @@ ollama ps
 
 This shows which models are currently loaded and whether they are using CPU, GPU, or both.
 
-You can also confirm that the Claw Dev proxy is healthy:
+You can also confirm that the UncleCode proxy is healthy:
 
 ```powershell
 npm run proxy:compat
@@ -361,7 +360,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 OPENAI_MODEL=gpt-5.4
 ```
 
-If you already ran `codex login`, you can leave `OPENAI_API_KEY` unset and Claw Dev will reuse `~/.codex/auth.json` as an experimental fallback. Example placeholder values are treated as unset.
+If you already ran `codex login`, you can leave `OPENAI_API_KEY` unset and UncleCode will reuse `~/.codex/auth.json` as an experimental fallback. Example placeholder values are treated as unset.
 
 ### Gemini
 
@@ -410,46 +409,45 @@ ZAI_MODEL=glm-5
 Check the installed launcher version:
 
 ```powershell
-cd E:\myclaudecode\Leonxlnx-claude-code
-.\claw-dev.cmd --version
+cd E:\myclaudecode
+npm run unclecode -- --version
 ```
 
 Check the installed launcher version on macOS or Linux:
 
 ```bash
-cd /path/to/myclaudecode/Leonxlnx-claude-code
-chmod +x ./claw-dev.sh
-./claw-dev.sh --version
+cd /path/to/myclaudecode
+npm run unclecode -- --version
 ```
 
 Skip the provider menu and force a specific provider:
 
 ```powershell
-.\claw-dev.cmd --provider anthropic
-.\\claw-dev.cmd --provider openai
-.\claw-dev.cmd --provider gemini
-.\claw-dev.cmd --provider groq
-.\claw-dev.cmd --provider copilot
-.\claw-dev.cmd --provider zai
-.\claw-dev.cmd --provider ollama
+npm run unclecode -- --provider anthropic
+npm run unclecode -- --provider openai
+npm run unclecode -- --provider gemini
+npm run unclecode -- --provider groq
+npm run unclecode -- --provider copilot
+npm run unclecode -- --provider zai
+npm run unclecode -- --provider ollama
 ```
 
 You can also skip the default model prompt and force any model id directly:
 
 ```powershell
-.\claw-dev.cmd --provider openai --model gpt-4.1
-.\claw-dev.cmd --provider gemini --model gemini-2.5-pro
-.\claw-dev.cmd --provider groq --model openai/gpt-oss-120b
-.\claw-dev.cmd --provider copilot --model openai/o4-mini
-.\claw-dev.cmd --provider zai --model glm-4.5
-.\claw-dev.cmd --provider ollama --model qwen2.5-coder:14b
+npm run unclecode -- --provider openai --model gpt-4.1
+npm run unclecode -- --provider gemini --model gemini-2.5-pro
+npm run unclecode -- --provider groq --model openai/gpt-oss-120b
+npm run unclecode -- --provider copilot --model openai/o4-mini
+npm run unclecode -- --provider zai --model glm-4.5
+npm run unclecode -- --provider ollama --model qwen2.5-coder:14b
 ```
 
 Equivalent macOS or Linux examples:
 
 ```bash
-./claw-dev.sh --provider openai --model gpt-4.1
-./claw-dev.sh --provider ollama --model qwen2.5-coder:14b
+npm run unclecode -- --provider openai --model gpt-4.1
+npm run unclecode -- --provider ollama --model qwen2.5-coder:14b
 ```
 
 If you want extra suggestions to appear in the proxy model catalog, you can define optional comma-separated model lists:
@@ -467,19 +465,19 @@ Important note:
 
 - the startup model override accepts any model id
 - the bundled `/model` command inside the client is still based on the bundled UI, so its labels may not match your provider exactly
-- Claw Dev uses your startup model choice as the real backend model for the session
+- UncleCode uses your startup model choice as the real backend model for the session
 
 Legacy aliases are still accepted:
 
 ```powershell
-.\claw-dev.cmd --provider claude
-.\claw-dev.cmd --provider grok
+npm run unclecode -- --provider claude
+npm run unclecode -- --provider grok
 ```
 
 Run a one-shot prompt:
 
 ```powershell
-echo "Summarize this repository" | .\claw-dev.cmd --bare -p
+echo "Summarize this repository" | npm run unclecode -- --bare -p
 ```
 
 ## Git Privacy Before Publishing
@@ -518,7 +516,7 @@ git diff --cached
 
 ## Architecture Overview
 
-Claw Dev works in two modes:
+UncleCode works in two modes:
 
 - Anthropic mode
   - the bundled client talks to Anthropic directly
@@ -569,7 +567,7 @@ Recommended fixes:
 
 ### Cloud providers work, but Ollama does not
 
-That usually means Claw Dev is working correctly, but the local Ollama server is not reachable or does not have the requested model.
+That usually means UncleCode is working correctly, but the local Ollama server is not reachable or does not have the requested model.
 
 ## Sharing With Another User
 
@@ -577,7 +575,7 @@ If you hand this repository to someone else, the shortest setup path is:
 
 1. Install Node.js 22 or newer
 2. Run `npm install`
-3. Start `npm run claw-dev`
+3. Start `npm run unclecode`
 4. Choose a provider
 5. Supply credentials or run Ollama locally
 
@@ -590,7 +588,7 @@ Useful checks:
 ```powershell
 npm run check
 npm run build
-npm run claw-dev -- --version
+npm run unclecode -- --version
 ```
 
 ## References

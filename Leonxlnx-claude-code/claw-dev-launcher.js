@@ -37,7 +37,7 @@ main().catch((error) => {
 async function main() {
   applyBrandingPatch();
 
-  const { providerArg, modelArg, forwardArgs } = parseLauncherArgs(process.argv.slice(2));
+  const { providerArg, modelArg, reasoningEffortArg, serviceTierArg, forwardArgs } = parseLauncherArgs(process.argv.slice(2));
   const infoOnly = isInfoOnlyInvocation(forwardArgs);
 
   if (infoOnly) {
@@ -60,7 +60,7 @@ async function main() {
       return launchBundledClient(env, forwardArgs);
     }
 
-    await configureCompatProvider(provider, env, rl, modelArg);
+    await configureCompatProvider(provider, env, rl, modelArg, reasoningEffortArg, serviceTierArg);
     await ensureCompatProxy(provider, env);
     env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${env.ANTHROPIC_COMPAT_PORT}`;
     env.ANTHROPIC_AUTH_TOKEN = "claw-dev-proxy";
@@ -77,6 +77,8 @@ function parseLauncherArgs(args) {
   const forwardArgs = [];
   let providerArg = null;
   let modelArg = null;
+  let reasoningEffortArg = null;
+  let serviceTierArg = null;
 
   for (let i = 0; i < args.length; i += 1) {
     const value = args[i];
@@ -90,10 +92,20 @@ function parseLauncherArgs(args) {
       i += 1;
       continue;
     }
+    if (value === "--reasoning-effort") {
+      reasoningEffortArg = args[i + 1] ?? null;
+      i += 1;
+      continue;
+    }
+    if (value === "--service-tier") {
+      serviceTierArg = args[i + 1] ?? null;
+      i += 1;
+      continue;
+    }
     forwardArgs.push(value);
   }
 
-  return { providerArg, modelArg, forwardArgs };
+  return { providerArg, modelArg, reasoningEffortArg, serviceTierArg, forwardArgs };
 }
 
 function applyBrandingPatch() {
@@ -201,7 +213,7 @@ async function configureAnthropic(env, rl) {
   process.stdout.write("You can log in with an Anthropic account or Anthropic Console inside the app.\n");
 }
 
-async function configureCompatProvider(provider, env, rl, modelArg) {
+async function configureCompatProvider(provider, env, rl, modelArg, reasoningEffortArg, serviceTierArg) {
   env.ANTHROPIC_COMPAT_PROVIDER = provider;
   const configuredPort = env.ANTHROPIC_COMPAT_PORT?.trim();
   env.CLAW_COMPAT_PORT_EXPLICIT = configuredPort && configuredPort !== defaultPorts[provider] ? "1" : "0";
@@ -235,6 +247,7 @@ async function configureCompatProvider(provider, env, rl, modelArg) {
         envKey: "OPENAI_MODEL",
         defaultModel: "gpt-4.1-mini",
       });
+      applyOpenAIRuntimeOptions(env, reasoningEffortArg, serviceTierArg);
       await applyCompatModelEnvForLauncher(provider, env);
       process.stdout.write(`\nLaunching OpenAI mode with model ${env.OPENAI_MODEL}.\n`);
       break;
@@ -355,6 +368,18 @@ async function applyCompatModelEnvForLauncher(provider, env) {
   const helperUrl = pathToFileURL(path.join(workspaceRoot, "shared", "compatEnv.js")).href;
   const { applyCompatModelEnv } = await import(helperUrl);
   applyCompatModelEnv(provider, env);
+}
+
+function applyOpenAIRuntimeOptions(env, reasoningEffortArg, serviceTierArg) {
+  const reasoningEffort = reasoningEffortArg?.trim();
+  const serviceTier = serviceTierArg?.trim();
+
+  if (reasoningEffort) {
+    env.OPENAI_REASONING_EFFORT = reasoningEffort;
+  }
+  if (serviceTier) {
+    env.OPENAI_SERVICE_TIER = serviceTier;
+  }
 }
 
 async function resolveModelSelection({ rl, env, provider, modelArg, envKey, defaultModel, suggestions }) {
