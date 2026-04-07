@@ -1,21 +1,26 @@
 import { PROVIDER_IDS, type ProviderId } from "@unclecode/contracts";
 import { ProviderCapabilityMismatchError } from "./errors.js";
-import { assertProviderCapability, getOpenAIModelRegistry } from "./model-registry.js";
+import { assertProviderCapability, getOpenAIModelRegistry, getReasoningSupport } from "./model-registry.js";
 import { resolveOpenAIAuth } from "./openai-auth.js";
-import { readOpenAICredentials, writeOpenAICredentials } from "./openai-credential-store.js";
+import { clearOpenAICredentials, readOpenAICredentials, writeOpenAICredentials } from "./openai-credential-store.js";
 import {
   buildOpenAIAuthorizationUrl,
   completeOpenAIBrowserLogin,
+  completeOpenAICodexDeviceLogin,
   completeOpenAIDeviceLogin,
   createOpenAIPkcePair,
   exchangeOpenAIAuthorizationCode,
   parseOpenAICallback,
+  requestOpenAICodexDeviceAuthorization,
   requestOpenAIDeviceAuthorization,
+  resolveReusableOpenAIOAuthClientId,
 } from "./openai-oauth.js";
 import { formatOpenAIAuthStatus, resolveOpenAIAuthStatus } from "./openai-status.js";
-import type { ModelRegistry, OpenAIAuthStatus, ResolveOpenAIAuthInput, ResolvedOpenAIAuth } from "./types.js";
+import type { ModelRegistry, OpenAIAuthStatus, ReasoningSupport, ResolveOpenAIAuthInput, ResolvedOpenAIAuth } from "./types.js";
+
+export * from "./runtime.js";
 export type { ProviderId };
-export type { ModelRegistry, OpenAIAuthStatus, ResolveOpenAIAuthInput, ResolvedOpenAIAuth } from "./types.js";
+export type { ModelRegistry, OpenAIAuthStatus, ReasoningSupport, ResolveOpenAIAuthInput, ResolvedOpenAIAuth } from "./types.js";
 export { ProviderCapabilityMismatchError };
 export const PROVIDERS_SUPPORTED_IDS = PROVIDER_IDS;
 export function getProviderAdapter(providerId: ProviderId) {
@@ -30,19 +35,26 @@ export function getProviderAdapter(providerId: ProviderId) {
     assertCapability(capability: Parameters<typeof assertProviderCapability>[1], options: { modelId: string }) {
       assertProviderCapability(providerId, capability, options.modelId);
     },
+    getReasoningSupport(options: { modelId: string }): ReasoningSupport {
+      return getReasoningSupport(providerId, options.modelId);
+    },
   };
 }
 export {
   buildOpenAIAuthorizationUrl,
   completeOpenAIBrowserLogin,
+  completeOpenAICodexDeviceLogin,
   completeOpenAIDeviceLogin,
   createOpenAIPkcePair,
   exchangeOpenAIAuthorizationCode,
   formatOpenAIAuthStatus,
   parseOpenAICallback,
+  requestOpenAICodexDeviceAuthorization,
   requestOpenAIDeviceAuthorization,
+  resolveReusableOpenAIOAuthClientId,
   resolveOpenAIAuth,
   resolveOpenAIAuthStatus,
+  clearOpenAICredentials,
   readOpenAICredentials,
   writeOpenAICredentials,
 };

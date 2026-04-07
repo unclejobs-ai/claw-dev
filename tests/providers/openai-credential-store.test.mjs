@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  clearOpenAICredentials,
   readOpenAICredentials,
   writeOpenAICredentials,
 } from "@unclecode/providers";
@@ -108,4 +109,46 @@ test("credential store falls back to file storage when keytar write fails", asyn
   const loaded = await readOpenAICredentials({ credentialsPath });
 
   assert.equal(loaded?.accessToken, "at_123");
+});
+
+test("credential store round-trips api-key credentials", async () => {
+  const rootDir = mkdtempSync(path.join(os.tmpdir(), "unclecode-creds-api-key-"));
+  const credentialsPath = path.join(rootDir, "openai.json");
+
+  await writeOpenAICredentials({
+    credentialsPath,
+    credentials: {
+      authType: "api-key",
+      apiKey: "sk-file-123",
+      organizationId: "org_file",
+      projectId: "proj_file",
+    },
+  });
+
+  const loaded = await readOpenAICredentials({ credentialsPath });
+
+  assert.equal(loaded?.authType, "api-key");
+  assert.equal(loaded?.apiKey, "sk-file-123");
+  assert.equal(loaded?.organizationId, "org_file");
+  assert.equal(loaded?.projectId, "proj_file");
+});
+
+test("credential store can clear persisted credentials", async () => {
+  const rootDir = mkdtempSync(path.join(os.tmpdir(), "unclecode-creds-clear-"));
+  const credentialsPath = path.join(rootDir, "openai.json");
+
+  await writeOpenAICredentials({
+    credentialsPath,
+    credentials: {
+      authType: "api-key",
+      apiKey: "sk-file-123",
+      organizationId: null,
+      projectId: null,
+    },
+  });
+
+  await clearOpenAICredentials({ credentialsPath });
+  const loaded = await readOpenAICredentials({ credentialsPath });
+
+  assert.equal(loaded, null);
 });

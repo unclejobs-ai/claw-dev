@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  PROVIDER_CAPABILITIES,
-  PROVIDER_IDS,
-} from "@unclecode/contracts";
+import { PROVIDER_CAPABILITIES, PROVIDER_IDS } from "@unclecode/contracts";
 
 test("provider-capability fixtures expose canonical provider metadata", () => {
   assert.deepEqual(PROVIDER_IDS, [
@@ -40,5 +37,8 @@ test("provider-capability fixtures expose canonical provider metadata", () => {
   });
 
   assert.equal(PROVIDER_CAPABILITIES.ollama.transport, "compat");
-  assert.equal(PROVIDER_CAPABILITIES.copilot.defaultModel, "openai/gpt-4.1-mini");
+  assert.equal(
+    PROVIDER_CAPABILITIES.copilot.defaultModel,
+    "openai/gpt-4.1-mini",
+  );
 });

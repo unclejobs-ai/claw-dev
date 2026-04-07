@@ -24,3 +24,22 @@ test("provider adapter raises a capability mismatch error for unsupported requir
     ProviderCapabilityMismatchError,
   );
 });
+
+test("openai provider exposes model-specific reasoning support", () => {
+  const adapter = getProviderAdapter("openai");
+
+  assert.deepEqual(adapter.getReasoningSupport({ modelId: "gpt-5.4" }), {
+    status: "supported",
+    defaultEffort: "medium",
+    supportedEfforts: ["low", "medium", "high"],
+  });
+  assert.deepEqual(adapter.getReasoningSupport({ modelId: "o4-mini" }), {
+    status: "supported",
+    defaultEffort: "medium",
+    supportedEfforts: ["low", "medium", "high"],
+  });
+  assert.deepEqual(adapter.getReasoningSupport({ modelId: "gpt-4.1-mini" }), {
+    status: "unsupported",
+    supportedEfforts: [],
+  });
+});
