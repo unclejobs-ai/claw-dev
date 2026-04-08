@@ -119,3 +119,31 @@ test("resolveOpenAIAuthStatus accepts codex oauth files without model.request sc
     rmSync(rootDir, { recursive: true, force: true });
   }
 });
+
+test("resolveOpenAIAuthStatus accepts stored codex runtime oauth without model.request scope", async () => {
+  const futureExp = Math.floor(Date.now() / 1000) + 3600;
+  const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ exp: futureExp, scp: ["openid", "profile", "offline_access"] })).toString("base64url");
+  const token = `${header}.${payload}.sig`;
+  const rootDir = mkdtempSync(path.join(os.tmpdir(), "unclecode-status-stored-codex-"));
+  const credentialsPath = path.join(rootDir, "openai.json");
+
+  try {
+    writeFileSync(
+      credentialsPath,
+      JSON.stringify({ authType: "oauth", accessToken: token, refreshToken: "rt_123", runtime: "codex" }),
+      "utf8",
+    );
+
+    const status = await resolveOpenAIAuthStatus({
+      env: { UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath },
+    });
+
+    assert.equal(status.activeSource, "oauth-file");
+    assert.equal(status.authType, "oauth");
+    assert.equal(status.expiresAt, null);
+    assert.equal(status.isExpired, false);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});

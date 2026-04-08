@@ -439,8 +439,6 @@ export async function completeOpenAICodexDeviceLogin(input: {
     fetch: input.fetch,
   });
 
-  assertModelRequestScope(tokens.accessToken);
-
   await (input.writeCredentials ?? writeOpenAICredentials)({
     credentialsPath: input.credentialsPath,
     credentials: {
@@ -451,6 +449,7 @@ export async function completeOpenAICodexDeviceLogin(input: {
       organizationId: null,
       projectId: null,
       accountId: null,
+      runtime: "codex",
     } as const,
   });
 
@@ -503,6 +502,7 @@ export async function completeOpenAIDeviceLogin(input: {
       organizationId: null,
       projectId: null,
       accountId: null,
+      runtime: "api",
     },
   });
 
@@ -550,6 +550,7 @@ export async function completeOpenAIBrowserLogin(input: {
       organizationId: null,
       projectId: null,
       accountId: null,
+      runtime: "api",
     },
   });
 

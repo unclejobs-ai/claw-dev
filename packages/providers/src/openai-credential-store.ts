@@ -13,6 +13,7 @@ type StoredOpenAICredentials =
       readonly organizationId: string | null;
       readonly projectId: string | null;
       readonly accountId: string | null;
+      readonly runtime: "api" | "codex" | null;
     }
   | {
       readonly authType: "api-key";
@@ -96,6 +97,7 @@ function parseStoredOpenAICredentials(parsed: any): StoredOpenAICredentials | nu
       organizationId: typeof parsed.organizationId === "string" ? parsed.organizationId : null,
       projectId: typeof parsed.projectId === "string" ? parsed.projectId : null,
       accountId: typeof parsed.accountId === "string" ? parsed.accountId : null,
+      runtime: parsed.runtime === "codex" || parsed.runtime === "api" ? parsed.runtime : null,
     };
   }
 

@@ -437,6 +437,7 @@ test("built unclecode cli auth login --device can derive client id from codex au
     assert.match(result.stdout, /user_123/);
     const saved = JSON.parse(readFileSync(credentialsPath, "utf8"));
     assert.equal(saved.refreshToken, "rt_123");
+    assert.equal(saved.runtime, "codex");
   } finally {
     server.close();
     rmSync(tempDir, { recursive: true, force: true });

@@ -235,6 +235,7 @@ test("completeOpenAIDeviceLogin stores returned oauth credentials", async () => 
   assert.equal(result.userCode, "user_123");
   assert.equal(writes.length, 1);
   assert.equal(writes[0].credentials.refreshToken, "rt_123");
+  assert.equal(writes[0].credentials.runtime, "api");
 });
 
 test("completeOpenAICodexDeviceLogin completes the codex device flow end-to-end", async () => {
@@ -242,7 +243,7 @@ test("completeOpenAICodexDeviceLogin completes the codex device flow end-to-end"
   const seenUrls = [];
   const scopedToken = [
     Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url"),
-    Buffer.from(JSON.stringify({ scp: ["openid", "profile", "offline_access", "model.request"] })).toString("base64url"),
+    Buffer.from(JSON.stringify({ scp: ["openid", "profile", "offline_access"] })).toString("base64url"),
     "sig",
   ].join(".");
 
@@ -279,12 +280,13 @@ test("completeOpenAICodexDeviceLogin completes the codex device flow end-to-end"
   assert.equal(result.userCode, "user_123");
   assert.equal(result.verificationUri, "http://fake-oauth.local/codex/device");
   assert.equal(writes[0].credentials.accessToken, scopedToken);
+  assert.equal(writes[0].credentials.runtime, "codex");
   assert.ok(seenUrls.some((value) => value.endsWith("/api/accounts/deviceauth/usercode")));
   assert.ok(seenUrls.some((value) => value.endsWith("/api/accounts/deviceauth/token")));
   assert.ok(seenUrls.some((value) => value.endsWith("/oauth/token")));
 });
 
-test("completeOpenAICodexDeviceLogin rejects tokens missing model.request scope", async () => {
+test("completeOpenAICodexDeviceLogin stores codex runtime credentials even without model.request scope", async () => {
   const writes = [];
   const missingScopeToken = [
     Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url"),
@@ -292,28 +294,28 @@ test("completeOpenAICodexDeviceLogin rejects tokens missing model.request scope"
     "sig",
   ].join(".");
 
-  await assert.rejects(
-    () => completeOpenAICodexDeviceLogin({
-      clientId: "client_123",
-      credentialsPath: "/tmp/openai-codex.json",
-      baseUrl: "http://fake-oauth.local",
-      fetch: async (url) => {
-        if (String(url).endsWith("/api/accounts/deviceauth/usercode")) {
-          return new Response(JSON.stringify({ device_auth_id: "device-auth-123", user_code: "user_123", interval: 0 }));
-        }
-        if (String(url).endsWith("/api/accounts/deviceauth/token")) {
-          return new Response(JSON.stringify({ authorization_code: "code_123", code_verifier: "verifier_123" }));
-        }
-        return new Response(JSON.stringify({ access_token: missingScopeToken, refresh_token: "rt_123" }));
-      },
-      writeCredentials: async (input) => {
-        writes.push(input);
-      },
-    }),
-    /model\.request/i,
-  );
+  const result = await completeOpenAICodexDeviceLogin({
+    clientId: "client_123",
+    credentialsPath: "/tmp/openai-codex.json",
+    baseUrl: "http://fake-oauth.local",
+    fetch: async (url) => {
+      if (String(url).endsWith("/api/accounts/deviceauth/usercode")) {
+        return new Response(JSON.stringify({ device_auth_id: "device-auth-123", user_code: "user_123", interval: 0 }));
+      }
+      if (String(url).endsWith("/api/accounts/deviceauth/token")) {
+        return new Response(JSON.stringify({ authorization_code: "code_123", code_verifier: "verifier_123" }));
+      }
+      return new Response(JSON.stringify({ access_token: missingScopeToken, refresh_token: "rt_123" }));
+    },
+    writeCredentials: async (input) => {
+      writes.push(input);
+    },
+  });
 
-  assert.equal(writes.length, 0);
+  assert.equal(result.userCode, "user_123");
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].credentials.runtime, "codex");
+  assert.equal(writes[0].credentials.accessToken, missingScopeToken);
 });
 
 test("completeOpenAIDeviceLogin exposes the device code before polling", async () => {
@@ -367,4 +369,5 @@ test("completeOpenAIBrowserLogin exchanges callback code and stores oauth creden
   assert.equal(result.accessToken, "at_123");
   assert.equal(writes.length, 1);
   assert.equal(writes[0].credentials.refreshToken, "rt_123");
+  assert.equal(writes[0].credentials.runtime, "api");
 });

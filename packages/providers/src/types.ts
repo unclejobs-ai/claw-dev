@@ -42,6 +42,7 @@ export type ResolvedOpenAIAuth =
       readonly organizationId?: string | null;
       readonly projectId?: string | null;
       readonly accountId?: string | null;
+      readonly runtime?: "api" | "codex";
     }
   | {
       readonly status: "expired";

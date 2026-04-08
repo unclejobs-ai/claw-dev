@@ -163,7 +163,8 @@ export async function loadConfig(
         openAIRuntime:
           auth.authType === "oauth"
           && (
-            auth.source === "codex-auth-file"
+            auth.runtime === "codex"
+            || auth.source === "codex-auth-file"
             || (auth.source === "env-openai-auth-token" && !tokenHasModelRequestScope(auth.bearerToken))
           )
             ? "codex"

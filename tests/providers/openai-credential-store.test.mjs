@@ -24,6 +24,7 @@ test("credential store writes strict fallback file permissions and round-trips o
       organizationId: "org_123",
       projectId: "proj_456",
       accountId: "acct_789",
+      runtime: "codex",
     },
   });
 
@@ -31,7 +32,9 @@ test("credential store writes strict fallback file permissions and round-trips o
   const loaded = await readOpenAICredentials({ credentialsPath });
 
   assert.equal(saved.authType, "oauth");
+  assert.equal(saved.runtime, "codex");
   assert.equal(loaded?.refreshToken, "rt_123");
+  assert.equal(loaded?.runtime, "codex");
   assert.equal(statSync(credentialsPath).mode & 0o777, 0o600);
 });
 
@@ -59,6 +62,7 @@ test("credential store uses keytar when available", async () => {
     organizationId: null,
     projectId: null,
     accountId: null,
+    runtime: "api",
   };
 
   await writeOpenAICredentials({
@@ -97,6 +101,7 @@ test("credential store falls back to file storage when keytar write fails", asyn
       organizationId: null,
       projectId: null,
       accountId: null,
+      runtime: "api",
     },
     keytar: {
       setPassword: async () => {

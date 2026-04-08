@@ -89,6 +89,10 @@ function hasRequiredModelRequestScope(token: string): boolean {
   return scopes.length === 0 || scopes.includes("model.request");
 }
 
+function normalizeStoredRuntime(value: unknown): "api" | "codex" | null {
+  return value === "api" || value === "codex" ? value : null;
+}
+
 function rankFailure(result: ResolvedOpenAIAuth): number {
   if (result.status === "missing" && result.reason === "auth-insufficient-scope") return 4;
   if (result.status === "missing" && result.reason === "auth-refresh-required") return 3;
@@ -118,6 +122,7 @@ export async function resolveOpenAIAuth(
       authType: "oauth",
       source: "env-openai-auth-token",
       bearerToken: authToken,
+      runtime: hasRequiredModelRequestScope(authToken) ? "api" : "codex",
     };
   }
 
@@ -167,6 +172,7 @@ export async function resolveOpenAIAuth(
 
       const accessToken = normalizeCredential(parsed?.accessToken) || normalizeCredential(parsed?.tokens?.access_token);
       const refreshToken = normalizeCredential(parsed?.refreshToken) || normalizeCredential(parsed?.tokens?.refresh_token);
+      const storedRuntime = normalizeStoredRuntime(parsed?.runtime) || (source === "codex-auth-file" ? "codex" : null);
 
       if (!accessToken) {
         rememberFailure({
@@ -197,7 +203,7 @@ export async function resolveOpenAIAuth(
         continue;
       }
 
-      if (!hasRequiredModelRequestScope(accessToken) && source !== "codex-auth-file") {
+      if (!hasRequiredModelRequestScope(accessToken) && storedRuntime !== "codex") {
         rememberFailure({
           status: "missing",
           authType: "oauth",
@@ -215,6 +221,7 @@ export async function resolveOpenAIAuth(
         organizationId: normalizeCredential(parsed?.organizationId) || null,
         projectId: normalizeCredential(parsed?.projectId) || null,
         accountId: normalizeCredential(parsed?.accountId) || normalizeCredential(parsed?.tokens?.account_id) || null,
+        runtime: storedRuntime ?? "api",
       };
     } catch {
       rememberFailure({
