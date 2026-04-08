@@ -1,232 +1,53 @@
 import { explainUncleCodeConfig } from "@unclecode/config-core";
 import {
   clearCachedWorkspaceGuidance,
-  listAvailableSkills,
-  listProjectBridgeLines,
-  listScopedMemoryLines,
   loadCachedWorkspaceGuidance,
-  loadNamedSkill,
-  publishContextBridge,
-  writeScopedMemory,
 } from "@unclecode/context-broker";
-import type {
-  ExecutionTraceEvent,
-  ModeReasoningEffort,
-} from "@unclecode/contracts";
 import {
   clearExtensionRegistryCache,
   describeReasoning,
-  listSessionLines,
   loadConfig,
   loadExtensionConfigOverlays,
   loadExtensionManifestSummaries,
-  persistWorkShellSessionSnapshot,
-  resolveComposerInput,
-  resolveModelCommand,
-  resolveReasoningCommand,
-  resolveWorkShellSlashCommand,
   runWorkShellInlineCommand,
-  toolDefinitions,
   type AppReasoningConfig,
-  type CodingAgentTraceEvent,
-  type OrchestratedWorkAgentTraceEvent,
-  type WorkShellReasoningConfig,
   WorkAgent,
 } from "@unclecode/orchestrator";
 import {
   resolveOpenAIAuth,
   resolveOpenAIAuthStatus,
   resolveReusableOpenAIOAuthClientId,
-  type ProviderInputAttachment,
-  type ProviderName,
-  type ProviderToolTraceEvent,
 } from "@unclecode/providers";
-import { createSessionStore, getSessionStoreRoot } from "@unclecode/session-store";
 import {
-  buildContextPanel,
-  buildInlineCommandPanel,
-  buildWorkShellHelpPanel,
-  buildWorkShellStatusPanel,
   createManagedWorkShellDashboardProps,
-  extractAuthLabel,
-  formatAgentTraceLine,
-  formatInlineCommandResultSummary,
   formatWorkShellError,
-  refineInlineCommandPanelLines,
   renderManagedWorkShellDashboard,
   type EmbeddedWorkDashboardSnapshot,
   type TuiShellHomeState,
 } from "@unclecode/tui";
-import * as path from "node:path";
-
 import {
   buildTuiHomeState,
   runTuiSessionCenterAction,
   runWorkShellInlineAction,
 } from "./operational.js";
+import {
+  parseArgs,
+  printHelp,
+  printTools,
+  resolveRuntimeProvider,
+} from "./work-runtime-args.js";
+import {
+  deriveAuthIssueLines,
+  loadResumedWorkSession,
+} from "./work-runtime-session.js";
+import {
+  createManagedDashboardInput,
+  type ManagedDashboardSession,
+  type StartReplAgent,
+  type StartReplOptions,
+} from "./work-runtime-dashboard.js";
 import { runWorkspaceGuardianChecks } from "./guardian-checks.js";
 import { createRuntimeCodingAgent } from "./runtime-coding-agent.js";
-
-export type StartReplOptions = {
-  provider: ProviderName;
-  model: string;
-  mode: string;
-  authLabel: string;
-  reasoning: AppReasoningConfig;
-  cwd: string;
-  contextSummaryLines: readonly string[];
-  homeState: TuiShellHomeState;
-  sessionId?: string | undefined;
-  initialTraceMode?: "minimal" | "verbose" | undefined;
-  reloadWorkspaceContext?: ((cwd: string) => Promise<readonly string[]>) | undefined;
-  refreshHomeState?: (() => Promise<TuiShellHomeState>) | undefined;
-  refreshAuthState?: (() => Promise<{ authLabel: string; authIssueLines?: readonly string[] }>) | undefined;
-  runInlineCommand?: ((args: readonly string[]) => Promise<readonly string[]>) | undefined;
-  saveApiKeyAuth?: ((raw: string) => Promise<readonly string[]>) | undefined;
-  browserOAuthAvailable?: boolean | undefined;
-};
-
-type StartReplTraceEvent =
-  | OrchestratedWorkAgentTraceEvent<CodingAgentTraceEvent<ProviderToolTraceEvent>>
-  | Extract<ExecutionTraceEvent, { type: "bridge.published" | "memory.written" }>;
-
-export type StartReplAgent = {
-  runTurn(
-    prompt: string,
-    attachments?: readonly ProviderInputAttachment[],
-  ): Promise<{ text: string }>;
-  clear(): void;
-  updateRuntimeSettings(settings: {
-    reasoning?: AppReasoningConfig | undefined;
-    model?: string | undefined;
-  }): void;
-  setTraceListener(
-    listener?: ((event: StartReplTraceEvent) => void) | undefined,
-  ): void;
-};
-
-type ManagedDashboardSession = {
-  agent: StartReplAgent;
-  options: StartReplOptions;
-};
-
-type ParsedArgs = {
-  cwd: string;
-  provider?: "anthropic" | "gemini" | "openai";
-  model?: string;
-  reasoning?: ModeReasoningEffort;
-  sessionId?: string;
-  prompt?: string;
-  showHelp: boolean;
-  showTools: boolean;
-};
-
-function printHelp(): void {
-  process.stdout.write(`UncleCode Work (repo-local)\n\n`);
-  process.stdout.write(`Usage:\n`);
-  process.stdout.write(`  unclecode work\n`);
-  process.stdout.write(`  unclecode work "summarize this project"\n`);
-  process.stdout.write(`  unclecode work --provider gemini --cwd E:\\\\repo --model gemini-2.5-flash\n\n`);
-  process.stdout.write(`Flags:\n`);
-  process.stdout.write(`  --help   Show this help text\n`);
-  process.stdout.write(`  --tools  List available local tools\n`);
-  process.stdout.write(`  --cwd    Set the workspace root\n`);
-  process.stdout.write(`  --provider  Choose openai, anthropic, or gemini\n`);
-  process.stdout.write(`  --model  Override the model for the chosen provider\n`);
-  process.stdout.write(`  --reasoning  Override reasoning effort: low, medium, high\n`);
-  process.stdout.write(`  --session-id  Resume a persisted work session id\n`);
-}
-
-function printTools(): void {
-  process.stdout.write(`Available tools:\n`);
-  for (const tool of toolDefinitions) {
-    process.stdout.write(`- ${tool.name}: ${tool.description}\n`);
-  }
-}
-
-function resolveRuntimeProvider(provider: string): "anthropic" | "gemini" | "openai" {
-  if (provider === "anthropic" || provider === "gemini" || provider === "openai") {
-    return provider;
-  }
-
-  throw new Error(`Unsupported runtime provider: ${provider}`);
-}
-
-function parseArgs(argv: string[]): ParsedArgs {
-  let cwd = process.cwd();
-  let provider: "anthropic" | "gemini" | "openai" | undefined;
-  let model: string | undefined;
-  let reasoning: ModeReasoningEffort | undefined;
-  let sessionId: string | undefined;
-  const promptParts: string[] = [];
-  let showHelp = false;
-  let showTools = false;
-
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === undefined) {
-      continue;
-    }
-    if (arg === "--help") {
-      showHelp = true;
-      continue;
-    }
-    if (arg === "--tools") {
-      showTools = true;
-      continue;
-    }
-    if (arg === "--cwd") {
-      cwd = path.resolve(argv[i + 1] ?? cwd);
-      i += 1;
-      continue;
-    }
-    if (arg === "--provider") {
-      const next = argv[i + 1];
-      if (next === "anthropic" || next === "gemini" || next === "openai") {
-        provider = next;
-      }
-      i += 1;
-      continue;
-    }
-    if (arg === "--model") {
-      model = argv[i + 1];
-      i += 1;
-      continue;
-    }
-    if (arg === "--reasoning") {
-      const next = argv[i + 1];
-      if (next === "low" || next === "medium" || next === "high") {
-        reasoning = next;
-      }
-      i += 1;
-      continue;
-    }
-    if (arg === "--session-id") {
-      sessionId = argv[i + 1];
-      i += 1;
-      continue;
-    }
-    promptParts.push(arg);
-  }
-
-  const parsed: ParsedArgs = { cwd, showHelp, showTools };
-  if (provider !== undefined) {
-    parsed.provider = provider;
-  }
-  if (model !== undefined) {
-    parsed.model = model;
-  }
-  if (reasoning !== undefined) {
-    parsed.reasoning = reasoning;
-  }
-  if (sessionId !== undefined) {
-    parsed.sessionId = sessionId;
-  }
-  if (promptParts.length > 0) {
-    parsed.prompt = promptParts.join(" ");
-  }
-  return parsed;
-}
 
 async function runInlineCommand(
   args: readonly string[],
@@ -277,32 +98,7 @@ async function buildWorkShellContextSummary(input: {
   ];
 }
 
-export async function loadResumedWorkSession(input: {
-  cwd: string;
-  sessionId: string;
-  env?: NodeJS.ProcessEnv;
-}): Promise<{
-  sessionId: string;
-  initialTraceMode?: "minimal" | "verbose";
-  contextLine: string;
-}> {
-  const sessionStore = createSessionStore({ rootDir: getSessionStoreRoot(input.env) });
-  const resumed = await sessionStore.resumeSession({
-    projectPath: input.cwd,
-    sessionId: input.sessionId,
-  });
-  if (resumed.checkpoint === null && resumed.records.length === 0) {
-    throw new Error(`Session not found: ${input.sessionId}`);
-  }
-
-  return {
-    sessionId: input.sessionId,
-    ...(resumed.metadata.traceMode
-      ? { initialTraceMode: resumed.metadata.traceMode }
-      : {}),
-    contextLine: `Resumed session: ${input.sessionId}`,
-  };
-}
+export { loadResumedWorkSession } from "./work-runtime-session.js";
 
 export const resolveWorkShellInlineCommand = (
   args: readonly string[],
@@ -318,121 +114,6 @@ export const resolveWorkShellInlineCommand = (
     formatWorkShellError,
     onProgress,
   );
-
-export function createManagedDashboardInput(session: ManagedDashboardSession) {
-  return {
-    homeState: session.options.homeState,
-    ...(session.options.refreshHomeState
-      ? { refreshHomeState: session.options.refreshHomeState }
-      : {}),
-    paneRuntime: {
-      agent: session.agent,
-      options: session.options,
-      buildContextPanel,
-      buildHelpPanel: buildWorkShellHelpPanel,
-      buildStatusPanel: ({ options, reasoningLabel, authLabel }: {
-        options: { model: string; mode: string };
-        reasoningLabel: string;
-        authLabel: string;
-      }) =>
-        buildWorkShellStatusPanel({
-          provider: session.options.provider,
-          model: options.model,
-          mode: options.mode,
-          cwd: session.options.cwd,
-          reasoningLabel,
-          authLabel,
-        }),
-      buildInlineCommandPanel,
-      formatInlineCommandResultSummary,
-      formatAgentTraceLine: (
-        event: ExecutionTraceEvent | { readonly type: "bridge.published" | "memory.written"; readonly [key: string]: unknown },
-      ) => formatAgentTraceLine(event as ExecutionTraceEvent),
-      formatWorkShellError,
-      listProjectBridgeLines,
-      listScopedMemoryLines,
-      listSessionLines,
-      persistWorkShellSessionSnapshot,
-      resolveReasoningCommand,
-      resolveModelCommand: (
-        input: string,
-        currentModel: string,
-        currentReasoning: WorkShellReasoningConfig,
-        modeDefaultReasoning: WorkShellReasoningConfig,
-      ) =>
-        resolveModelCommand(input, {
-          provider: session.options.provider as import("@unclecode/contracts").ProviderId,
-          currentModel,
-          currentReasoning,
-          modeDefaultReasoning,
-        }),
-      resolveWorkShellSlashCommand,
-      resolveWorkShellInlineCommand,
-      ...(session.options.refreshAuthState
-        ? { refreshAuthState: session.options.refreshAuthState }
-        : {}),
-      ...(session.options.runInlineCommand
-        ? { runInlineCommand: session.options.runInlineCommand }
-        : {}),
-      ...(session.options.saveApiKeyAuth
-        ? { saveApiKeyAuth: session.options.saveApiKeyAuth }
-        : {}),
-      resolveComposerInput,
-      refineInlineCommandResultLines: ({
-        args,
-        lines,
-        failed,
-        authLabel,
-        browserOAuthAvailable,
-      }: {
-        args: readonly string[];
-        lines: readonly string[];
-        failed: boolean;
-        authLabel: string;
-        browserOAuthAvailable: boolean;
-      }) =>
-        refineInlineCommandPanelLines({
-          args,
-          lines,
-          failed,
-          authLabel,
-          browserOAuthAvailable,
-        }),
-      ...(session.options.reloadWorkspaceContext
-        ? { reloadWorkspaceContext: session.options.reloadWorkspaceContext }
-        : {}),
-      publishContextBridge,
-      writeScopedMemory,
-      listAvailableSkills,
-      loadNamedSkill,
-      toolLines: toolDefinitions.map(
-        (tool) => `${tool.name}: ${tool.description}`,
-      ),
-      extractAuthLabel,
-      ...(session.options.sessionId
-        ? { sessionId: session.options.sessionId }
-        : {}),
-      ...(process.env.HOME ? { userHomeDir: process.env.HOME } : {}),
-      browserOAuthAvailable: Boolean(session.options.browserOAuthAvailable),
-    },
-    getReasoningLabel: describeReasoning,
-    isReasoningSupported: (reasoning: WorkShellReasoningConfig) =>
-      reasoning.support.status === "supported",
-  };
-}
-
-function deriveAuthIssueLines(input: {
-  authStatus?: Awaited<ReturnType<typeof resolveOpenAIAuthStatus>>;
-  authIssueMessage?: string | undefined;
-}): readonly string[] {
-  return input.authStatus?.expiresAt === "insufficient-scope"
-    ? ["Auth issue: saved OAuth lacks model.request scope. Use /auth key, OPENAI_API_KEY, or browser OAuth with OPENAI_OAUTH_CLIENT_ID."]
-    : input.authStatus?.expiresAt === "refresh-required"
-      ? ["Auth issue: saved OAuth needs refresh. Use /auth login or /auth logout before asking the model to work."]
-      : input.authIssueMessage
-        ? [input.authIssueMessage]
-        : [];
-}
 
 async function loadWorkCliSession(argv: readonly string[]) {
   const { cwd, provider, model, reasoning, sessionId, prompt } = parseArgs([...argv]);
@@ -587,7 +268,12 @@ async function loadWorkCliSession(argv: readonly string[]) {
 export function createManagedDashboardProps(
   session: ManagedDashboardSession,
 ): EmbeddedWorkDashboardSnapshot<TuiShellHomeState> {
-  return createManagedWorkShellDashboardProps(createManagedDashboardInput(session));
+  return createManagedWorkShellDashboardProps(
+    createManagedDashboardInput(session, {
+      resolveWorkShellInlineCommand,
+      ...(process.env.HOME ? { userHomeDir: process.env.HOME } : {}),
+    }),
+  );
 }
 
 export function createWorkShellDashboardProps(
@@ -601,7 +287,15 @@ export async function startRepl(
   agent: StartReplAgent,
   options: StartReplOptions,
 ): Promise<void> {
-  await renderManagedWorkShellDashboard(createManagedDashboardInput({ agent, options }));
+  await renderManagedWorkShellDashboard(
+    createManagedDashboardInput(
+      { agent, options },
+      {
+        resolveWorkShellInlineCommand,
+        ...(process.env.HOME ? { userHomeDir: process.env.HOME } : {}),
+      },
+    ),
+  );
 }
 
 export async function loadWorkShellDashboardProps(

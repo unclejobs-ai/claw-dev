@@ -117,6 +117,17 @@ test("startup router keeps interactive boot behind dynamic imports without a wor
     path.join(workspaceRoot, "apps/unclecode-cli/src/work-runtime-args.ts"),
     "utf8",
   );
+  const workRuntimeSessionSource = readFileSync(
+    path.join(workspaceRoot, "apps/unclecode-cli/src/work-runtime-session.ts"),
+    "utf8",
+  );
+  const workRuntimeDashboardSource = readFileSync(
+    path.join(
+      workspaceRoot,
+      "apps/unclecode-cli/src/work-runtime-dashboard.ts",
+    ),
+    "utf8",
+  );
   const workRuntimeSource = readFileSync(
     path.join(workspaceRoot, "apps/unclecode-cli/src/work-runtime.ts"),
     "utf8",
@@ -158,19 +169,67 @@ test("startup router keeps interactive boot behind dynamic imports without a wor
     workBootstrapSource,
     /import\s+type\s+\{[\s\S]*EmbeddedWorkDashboardSnapshot[\s\S]*EmbeddedWorkPaneRenderOptions[\s\S]*\}\s+from\s+"@unclecode\/tui"/,
   );
-  assert.match(
-    workRuntimeSource,
-    /from\s+"\.\/work-runtime-args\.js"/,
-  );
+  assert.match(workRuntimeSource, /from\s+"\.\/work-runtime-args\.js"/);
+  assert.match(workRuntimeSource, /from\s+"\.\/work-runtime-session\.js"/);
+  assert.match(workRuntimeSource, /from\s+"\.\/work-runtime-dashboard\.js"/);
   assert.doesNotMatch(workRuntimeSource, /function\s+printHelp\(/);
+  assert.doesNotMatch(workRuntimeSource, /function\s+deriveAuthIssueLines\(/);
+  assert.doesNotMatch(
+    workRuntimeSource,
+    /async\s+function\s+loadResumedWorkSession\(/,
+  );
+  assert.doesNotMatch(
+    workRuntimeSource,
+    /function\s+createManagedDashboardInput\(/,
+  );
   assert.doesNotMatch(workRuntimeSource, /function\s+printTools\(/);
   assert.doesNotMatch(workRuntimeSource, /function\s+resolveRuntimeProvider\(/);
   assert.doesNotMatch(workRuntimeSource, /function\s+parseArgs\(/);
   assert.match(workRuntimeArgsSource, /export\s+type\s+ParsedArgs\s*=\s*\{/);
-  assert.match(workRuntimeArgsSource, /export\s+function\s+printHelp\(\):\s*void/);
-  assert.match(workRuntimeArgsSource, /export\s+function\s+printTools\(\):\s*void/);
-  assert.match(workRuntimeArgsSource, /export\s+function\s+resolveRuntimeProvider\(/);
-  assert.match(workRuntimeArgsSource, /export\s+function\s+parseArgs\(argv:\s*string\[]\):\s*ParsedArgs/);
+  assert.match(
+    workRuntimeArgsSource,
+    /export\s+function\s+printHelp\(\):\s*void/,
+  );
+  assert.match(
+    workRuntimeArgsSource,
+    /export\s+function\s+printTools\(\):\s*void/,
+  );
+  assert.match(
+    workRuntimeArgsSource,
+    /export\s+function\s+resolveRuntimeProvider\(/,
+  );
+  assert.match(
+    workRuntimeArgsSource,
+    /export\s+function\s+parseArgs\(argv:\s*string\[]\):\s*ParsedArgs/,
+  );
+  assert.match(
+    workRuntimeSessionSource,
+    /export\s+type\s+WorkRuntimeAuthIssueInput\s*=\s*\{/,
+  );
+  assert.match(
+    workRuntimeSessionSource,
+    /export\s+function\s+deriveAuthIssueLines\(input:\s*WorkRuntimeAuthIssueInput\):\s*readonly string\[]/,
+  );
+  assert.match(
+    workRuntimeSessionSource,
+    /export\s+async\s+function\s+loadResumedWorkSession\(/,
+  );
+  assert.match(
+    workRuntimeDashboardSource,
+    /export\s+type\s+StartReplOptions\s*=\s*\{/,
+  );
+  assert.match(
+    workRuntimeDashboardSource,
+    /export\s+type\s+StartReplAgent\s*=\s*\{/,
+  );
+  assert.match(
+    workRuntimeDashboardSource,
+    /export\s+type\s+ManagedDashboardSession\s*=\s*\{/,
+  );
+  assert.match(
+    workRuntimeDashboardSource,
+    /export\s+function\s+createManagedDashboardInput\(/,
+  );
   assert.doesNotMatch(programSource, /from\s+"\.\/interactive-shell\.js"/);
   assert.match(
     programSource,
@@ -234,10 +293,7 @@ test("startup router keeps interactive boot behind dynamic imports without a wor
     programSource,
     /async\s+function\s+runBrowserAuthLogin\(\s*input:\s*BrowserAuthLoginInput\s*\):\s*Promise<void>/,
   );
-  assert.doesNotMatch(
-    programSource,
-    /function\s+buildWorkCommandArgs\(/,
-  );
+  assert.doesNotMatch(programSource, /function\s+buildWorkCommandArgs\(/);
   assert.match(
     workBootstrapSource,
     /export\s+function\s+buildWorkCommandArgs\(/,
@@ -975,7 +1031,7 @@ test("apps/unclecode-cli/src/work-runtime.ts imports config/tools/guidance from 
 
   assert.match(
     source,
-    /import\s*\{[^}]*loadConfig[^}]*toolDefinitions[^}]*WorkAgent[^}]*\}\s*from\s*"@unclecode\/orchestrator"/s,
+    /import\s*\{[^}]*loadConfig[^}]*runWorkShellInlineCommand[^}]*WorkAgent[^}]*\}\s*from\s*"@unclecode\/orchestrator"/s,
   );
   assert.match(
     source,

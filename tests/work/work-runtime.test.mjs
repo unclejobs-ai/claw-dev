@@ -8,6 +8,10 @@ import {
   parseArgs,
   resolveRuntimeProvider,
 } from "../../apps/unclecode-cli/src/work-runtime-args.ts";
+import {
+  deriveAuthIssueLines,
+  loadResumedWorkSession,
+} from "../../apps/unclecode-cli/src/work-runtime-session.ts";
 import { loadWorkShellDashboardProps } from "../../apps/unclecode-cli/src/work-runtime.ts";
 
 test("parseArgs extracts cwd/provider/model/reasoning/session/help/tools/prompt from work argv", () => {
@@ -45,12 +49,45 @@ test("resolveRuntimeProvider rejects unsupported providers honestly", () => {
   assert.throws(() => resolveRuntimeProvider("bogus"), /Unsupported runtime provider: bogus/);
 });
 
+test("deriveAuthIssueLines maps saved oauth states into actionable operator guidance", () => {
+  assert.deepEqual(
+    deriveAuthIssueLines({ authStatus: { expiresAt: "insufficient-scope" } }),
+    ["Auth issue: saved OAuth lacks model.request scope. Use /auth key, OPENAI_API_KEY, or browser OAuth with OPENAI_OAUTH_CLIENT_ID."],
+  );
+  assert.deepEqual(
+    deriveAuthIssueLines({ authStatus: { expiresAt: "refresh-required" } }),
+    ["Auth issue: saved OAuth needs refresh. Use /auth login or /auth logout before asking the model to work."],
+  );
+  assert.deepEqual(
+    deriveAuthIssueLines({ authIssueMessage: "manual override" }),
+    ["manual override"],
+  );
+});
+
 function buildScopedOutJwt() {
   const futureExp = Math.floor(Date.now() / 1000) + 3600;
   const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
   const payload = Buffer.from(JSON.stringify({ exp: futureExp, scp: ["openid", "profile", "offline_access"] })).toString("base64url");
   return `${header}.${payload}.sig`;
 }
+
+test("loadResumedWorkSession reports missing session ids honestly", async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), "unclecode-work-runtime-session-"));
+  const fakeHome = path.join(workspaceRoot, "home");
+
+  try {
+    await assert.rejects(
+      () => loadResumedWorkSession({
+        cwd: workspaceRoot,
+        sessionId: "work-missing",
+        env: { HOME: fakeHome },
+      }),
+      /Session not found: work-missing/,
+    );
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
 
 test("loadWorkShellDashboardProps keeps browser oauth unavailable when only reusable codex auth exists", async () => {
   const originalEnv = { ...process.env };

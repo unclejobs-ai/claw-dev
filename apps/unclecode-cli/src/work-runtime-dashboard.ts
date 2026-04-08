@@ -1,0 +1,200 @@
+import {
+  listAvailableSkills,
+  listProjectBridgeLines,
+  listScopedMemoryLines,
+  loadNamedSkill,
+  publishContextBridge,
+  writeScopedMemory,
+} from "@unclecode/context-broker";
+import type { ExecutionTraceEvent, ProviderId } from "@unclecode/contracts";
+import {
+  describeReasoning,
+  listSessionLines,
+  persistWorkShellSessionSnapshot,
+  resolveComposerInput,
+  resolveModelCommand,
+  resolveReasoningCommand,
+  resolveWorkShellSlashCommand,
+  toolDefinitions,
+  type AppReasoningConfig,
+  type CodingAgentTraceEvent,
+  type OrchestratedWorkAgentTraceEvent,
+  type WorkShellReasoningConfig,
+} from "@unclecode/orchestrator";
+import type {
+  ProviderInputAttachment,
+  ProviderName,
+  ProviderToolTraceEvent,
+} from "@unclecode/providers";
+import {
+  buildContextPanel,
+  buildInlineCommandPanel,
+  buildWorkShellHelpPanel,
+  buildWorkShellStatusPanel,
+  extractAuthLabel,
+  formatAgentTraceLine,
+  formatInlineCommandResultSummary,
+  formatWorkShellError,
+  refineInlineCommandPanelLines,
+  type TuiShellHomeState,
+} from "@unclecode/tui";
+
+export type StartReplOptions = {
+  provider: ProviderName;
+  model: string;
+  mode: string;
+  authLabel: string;
+  reasoning: AppReasoningConfig;
+  cwd: string;
+  contextSummaryLines: readonly string[];
+  homeState: TuiShellHomeState;
+  sessionId?: string | undefined;
+  initialTraceMode?: "minimal" | "verbose" | undefined;
+  reloadWorkspaceContext?: ((cwd: string) => Promise<readonly string[]>) | undefined;
+  refreshHomeState?: (() => Promise<TuiShellHomeState>) | undefined;
+  refreshAuthState?: (() => Promise<{ authLabel: string; authIssueLines?: readonly string[] }>) | undefined;
+  runInlineCommand?: ((args: readonly string[]) => Promise<readonly string[]>) | undefined;
+  saveApiKeyAuth?: ((raw: string) => Promise<readonly string[]>) | undefined;
+  browserOAuthAvailable?: boolean | undefined;
+};
+
+type StartReplTraceEvent =
+  | OrchestratedWorkAgentTraceEvent<CodingAgentTraceEvent<ProviderToolTraceEvent>>
+  | Extract<ExecutionTraceEvent, { type: "bridge.published" | "memory.written" }>;
+
+export type StartReplAgent = {
+  runTurn(
+    prompt: string,
+    attachments?: readonly ProviderInputAttachment[],
+  ): Promise<{ text: string }>;
+  clear(): void;
+  updateRuntimeSettings(settings: {
+    reasoning?: AppReasoningConfig | undefined;
+    model?: string | undefined;
+  }): void;
+  setTraceListener(
+    listener?: ((event: StartReplTraceEvent) => void) | undefined,
+  ): void;
+};
+
+export type ManagedDashboardSession = {
+  agent: StartReplAgent;
+  options: StartReplOptions;
+};
+
+type ResolveWorkShellInlineCommand = (
+  args: readonly string[],
+  runInlineCommand: (
+    args: readonly string[],
+    onProgress?: ((line: string) => void) | undefined,
+  ) => Promise<readonly string[]>,
+  onProgress?: ((line: string) => void) | undefined,
+) => Promise<{ readonly lines: readonly string[]; readonly failed: boolean }>;
+
+export function createManagedDashboardInput(
+  session: ManagedDashboardSession,
+  input: {
+    resolveWorkShellInlineCommand: ResolveWorkShellInlineCommand;
+    userHomeDir?: string;
+  },
+) {
+  return {
+    homeState: session.options.homeState,
+    ...(session.options.refreshHomeState
+      ? { refreshHomeState: session.options.refreshHomeState }
+      : {}),
+    paneRuntime: {
+      agent: session.agent,
+      options: session.options,
+      buildContextPanel,
+      buildHelpPanel: buildWorkShellHelpPanel,
+      buildStatusPanel: ({ options, reasoningLabel, authLabel }: {
+        options: { model: string; mode: string };
+        reasoningLabel: string;
+        authLabel: string;
+      }) =>
+        buildWorkShellStatusPanel({
+          provider: session.options.provider,
+          model: options.model,
+          mode: options.mode,
+          cwd: session.options.cwd,
+          reasoningLabel,
+          authLabel,
+        }),
+      buildInlineCommandPanel,
+      formatInlineCommandResultSummary,
+      formatAgentTraceLine: (
+        event: ExecutionTraceEvent | { readonly type: "bridge.published" | "memory.written"; readonly [key: string]: unknown },
+      ) => formatAgentTraceLine(event as ExecutionTraceEvent),
+      formatWorkShellError,
+      listProjectBridgeLines,
+      listScopedMemoryLines,
+      listSessionLines,
+      persistWorkShellSessionSnapshot,
+      resolveReasoningCommand,
+      resolveModelCommand: (
+        value: string,
+        currentModel: string,
+        currentReasoning: WorkShellReasoningConfig,
+        modeDefaultReasoning: WorkShellReasoningConfig,
+      ) =>
+        resolveModelCommand(value, {
+          provider: session.options.provider as ProviderId,
+          currentModel,
+          currentReasoning,
+          modeDefaultReasoning,
+        }),
+      resolveWorkShellSlashCommand,
+      resolveWorkShellInlineCommand: input.resolveWorkShellInlineCommand,
+      ...(session.options.refreshAuthState
+        ? { refreshAuthState: session.options.refreshAuthState }
+        : {}),
+      ...(session.options.runInlineCommand
+        ? { runInlineCommand: session.options.runInlineCommand }
+        : {}),
+      ...(session.options.saveApiKeyAuth
+        ? { saveApiKeyAuth: session.options.saveApiKeyAuth }
+        : {}),
+      resolveComposerInput,
+      refineInlineCommandResultLines: ({
+        args,
+        lines,
+        failed,
+        authLabel,
+        browserOAuthAvailable,
+      }: {
+        args: readonly string[];
+        lines: readonly string[];
+        failed: boolean;
+        authLabel: string;
+        browserOAuthAvailable: boolean;
+      }) =>
+        refineInlineCommandPanelLines({
+          args,
+          lines,
+          failed,
+          authLabel,
+          browserOAuthAvailable,
+        }),
+      ...(session.options.reloadWorkspaceContext
+        ? { reloadWorkspaceContext: session.options.reloadWorkspaceContext }
+        : {}),
+      publishContextBridge,
+      writeScopedMemory,
+      listAvailableSkills,
+      loadNamedSkill,
+      toolLines: toolDefinitions.map(
+        (tool) => `${tool.name}: ${tool.description}`,
+      ),
+      extractAuthLabel,
+      ...(session.options.sessionId
+        ? { sessionId: session.options.sessionId }
+        : {}),
+      ...(input.userHomeDir ? { userHomeDir: input.userHomeDir } : {}),
+      browserOAuthAvailable: Boolean(session.options.browserOAuthAvailable),
+    },
+    getReasoningLabel: describeReasoning,
+    isReasoningSupported: (reasoning: WorkShellReasoningConfig) =>
+      reasoning.support.status === "supported",
+  };
+}
