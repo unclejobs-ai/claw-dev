@@ -50,6 +50,84 @@ export async function resolveSecureApiKeyEntrySubmission(input: {
   }
 }
 
+export async function loadWorkShellMemoriesPanel(input: {
+  cwd: string;
+  sessionId: string;
+  listScopedMemoryLines: (input: {
+    scope: "session" | "project" | "user" | "agent";
+    cwd: string;
+    sessionId?: string;
+    agentId?: string;
+  }) => Promise<readonly string[]>;
+}): Promise<{
+  readonly sessionMemory: readonly string[];
+  readonly projectMemory: readonly string[];
+}> {
+  const [sessionMemory, projectMemory] = await Promise.all([
+    input.listScopedMemoryLines({ scope: "session", cwd: input.cwd, sessionId: input.sessionId }),
+    input.listScopedMemoryLines({ scope: "project", cwd: input.cwd }),
+  ]);
+  return {
+    sessionMemory,
+    projectMemory,
+  };
+}
+
+export async function writeWorkShellRememberCommand(input: {
+  command: { readonly scope: "session" | "project" | "user" | "agent"; readonly summary: string };
+  cwd: string;
+  sessionId: string;
+  writeScopedMemory: (input: {
+    scope: "session" | "project" | "user" | "agent";
+    cwd: string;
+    summary: string;
+    sessionId?: string;
+    agentId?: string;
+  }) => Promise<{ memoryId: string }>;
+  listScopedMemoryLines: (input: {
+    scope: "session" | "project" | "user" | "agent";
+    cwd: string;
+    sessionId?: string;
+    agentId?: string;
+  }) => Promise<readonly string[]>;
+  formatAgentTraceLine: (event: {
+    readonly type: "memory.written";
+    readonly level: "high-signal";
+    readonly memoryId: string;
+    readonly scope: "session" | "project" | "user" | "agent";
+    readonly summary: string;
+  }) => string;
+}): Promise<{
+  readonly nextMemoryLines: readonly string[];
+  readonly memoryTrace: string;
+}> {
+  const result = await input.writeScopedMemory({
+    scope: input.command.scope,
+    cwd: input.cwd,
+    summary: input.command.summary,
+    sessionId: input.sessionId,
+    agentId: "work-shell",
+  });
+  const nextMemoryLines = await input.listScopedMemoryLines({
+    scope: input.command.scope === "project" ? "project" : input.command.scope,
+    cwd: input.cwd,
+    sessionId: input.sessionId,
+    agentId: "work-shell",
+  });
+  const memoryTrace = input.formatAgentTraceLine({
+    type: "memory.written",
+    level: "high-signal",
+    memoryId: result.memoryId,
+    scope: input.command.scope,
+    summary: input.command.summary,
+  });
+
+  return {
+    nextMemoryLines,
+    memoryTrace,
+  };
+}
+
 export async function resolveInlineOperationalCommandResult(input: {
   line: string;
   slashCommand: readonly string[];

@@ -26,6 +26,7 @@ import {
   resolveWorkShellBuiltinCommand,
   resolveWorkShellLocalCommand,
 } from "./work-shell-engine-commands.js";
+import * as WorkShellExecution from "./work-shell-engine-execution.js";
 import * as WorkShellOperations from "./work-shell-engine-operations.js";
 import * as WorkShellPostTurns from "./work-shell-engine-post-turns.js";
 import * as WorkShellTurns from "./work-shell-engine-turns.js";
@@ -687,10 +688,11 @@ export class WorkShellEngine<
 
     const localCommand = resolveWorkShellLocalCommand(line);
     if (localCommand?.kind === "memories") {
-      const [sessionMemory, projectMemory] = await Promise.all([
-        this.listScopedMemoryLines({ scope: "session", cwd: this.options.cwd, sessionId: this.sessionId }),
-        this.listScopedMemoryLines({ scope: "project", cwd: this.options.cwd }),
-      ]);
+      const { sessionMemory, projectMemory } = await WorkShellOperations.loadWorkShellMemoriesPanel({
+        cwd: this.options.cwd,
+        sessionId: this.sessionId,
+        listScopedMemoryLines: this.listScopedMemoryLines,
+      });
       this.appendEntries(
         { role: "user", text: line },
         { role: "system", text: "Memories shown." },
@@ -711,34 +713,22 @@ export class WorkShellEngine<
     }
 
     if (localCommand?.kind === "remember") {
-      const result = await this.writeScopedMemory({
-        scope: localCommand.scope,
-        cwd: this.options.cwd,
-        summary: localCommand.summary,
-        sessionId: this.sessionId,
-        agentId: "work-shell",
-      });
-      const nextMemoryLines = await this.listScopedMemoryLines({
-        scope: localCommand.scope === "project" ? "project" : localCommand.scope,
+      const result = await WorkShellOperations.writeWorkShellRememberCommand({
+        command: localCommand,
         cwd: this.options.cwd,
         sessionId: this.sessionId,
-        agentId: "work-shell",
+        writeScopedMemory: this.writeScopedMemory,
+        listScopedMemoryLines: this.listScopedMemoryLines,
+        formatAgentTraceLine: this.formatAgentTraceLine,
       });
       if (localCommand.scope === "session") {
-        this.setState({ memoryLines: nextMemoryLines });
+        this.setState({ memoryLines: result.nextMemoryLines });
       }
-      const memoryTrace = this.formatAgentTraceLine({
-        type: "memory.written",
-        level: "high-signal",
-        memoryId: result.memoryId,
-        scope: localCommand.scope,
-        summary: localCommand.summary,
-      });
       this.appendEntries(
         { role: "user", text: line },
-        { role: "tool", text: memoryTrace },
+        { role: "tool", text: result.memoryTrace },
       );
-      this.pushTraceLine(memoryTrace);
+      this.pushTraceLine(result.memoryTrace);
       return;
     }
 
@@ -773,7 +763,10 @@ export class WorkShellEngine<
   }): Promise<void> {
     this.appendEntries({ role: "user", text: input.transcriptText });
     const turnStartedAt = Date.now();
-    this.setState({ isBusy: true, busyStatus: "thinking", currentTurnStartedAt: turnStartedAt });
+    this.setState(WorkShellExecution.createPromptTurnStartPatch({
+      state: this.state,
+      turnStartedAt,
+    }));
 
     try {
       await this.persistSessionSnapshot("running", input.sessionSummary).catch(() => undefined);
@@ -798,15 +791,14 @@ export class WorkShellEngine<
         writeScopedMemory: this.writeScopedMemory,
         listScopedMemoryLines: this.listScopedMemoryLines,
       });
-      this.setState({
+      this.setState(WorkShellExecution.createPromptTurnSuccessPatch({
+        state: this.state,
         bridgeLines: postTurnEffects.bridgeLines,
         memoryLines: postTurnEffects.memoryLines,
-      });
+        lastTurnDurationMs,
+      }));
       this.pushTraceLine(this.formatAgentTraceLine(postTurnEffects.bridgeTraceEvent));
       this.pushTraceLine(this.formatAgentTraceLine(postTurnEffects.memoryTraceEvent));
-
-
-      this.setState({ lastTurnDurationMs });
       await this.persistSessionSnapshot("idle", input.sessionSummary).catch(() => undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -818,23 +810,19 @@ export class WorkShellEngine<
         applyAuthIssueLines: (authIssueLines) => this.applyAuthIssueLines(authIssueLines),
       });
       this.appendEntries({ role: "system", text: this.formatWorkShellError(message) });
-      this.setState({
-        ...createWorkShellAuthStatePatch({
-          state: this.state,
-          authLabel: nextAuthLabel,
-        }),
-        currentTurnStartedAt: undefined,
+      this.setState(WorkShellExecution.createPromptTurnFailurePatch({
+        state: this.state,
+        nextAuthLabel,
         lastTurnDurationMs: Date.now() - turnStartedAt,
+        isAuthFailure,
         ...(isAuthFailure
-          ? { panel: this.buildStatusPanelFor(this.state.reasoning, nextAuthLabel) }
+          ? { statusPanel: this.buildStatusPanelFor(this.state.reasoning, nextAuthLabel) }
           : {}),
-      });
+      }));
       await this.persistSessionSnapshot("requires_action", input.failureSummary).catch(() => undefined);
     } finally {
-      this.setState(createWorkShellBusyStatePatch({
+      this.setState(WorkShellExecution.createPromptTurnFinalizePatch({
         state: this.state,
-        isBusy: false,
-        clearCurrentTurnStartedAt: true,
       }));
     }
   }

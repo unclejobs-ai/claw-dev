@@ -37,8 +37,16 @@ import {
   resolveWorkShellLocalCommand,
 } from "../../packages/orchestrator/src/work-shell-engine-commands.ts";
 import {
+  createPromptTurnFailurePatch,
+  createPromptTurnFinalizePatch,
+  createPromptTurnStartPatch,
+  createPromptTurnSuccessPatch,
+} from "../../packages/orchestrator/src/work-shell-engine-execution.ts";
+import {
+  loadWorkShellMemoriesPanel,
   resolveInlineOperationalCommandResult,
   resolveSecureApiKeyEntrySubmission,
+  writeWorkShellRememberCommand,
 } from "../../packages/orchestrator/src/work-shell-engine-operations.ts";
 import {
   createWorkShellSessionSnapshotInput,
@@ -505,7 +513,71 @@ test("work-shell turn helpers build summaries and permission-stall continuations
   );
 });
 
-test("work-shell operational helpers resolve secure auth entry and inline command results", async () => {
+test("work-shell execution helpers assemble start, success, failure, and finalize state patches", () => {
+  const state = createState({
+    authLabel: "oauth-file",
+    bridgeLines: ["bridge-0"],
+    memoryLines: ["memory-0"],
+    isBusy: true,
+    currentTurnStartedAt: 10,
+  });
+
+  assert.deepEqual(createPromptTurnStartPatch({ state, turnStartedAt: 42 }), {
+    isBusy: true,
+    busyStatus: "thinking",
+    currentTurnStartedAt: 42,
+  });
+  assert.deepEqual(createPromptTurnSuccessPatch({
+    state,
+    bridgeLines: ["bridge-1"],
+    memoryLines: ["memory-1"],
+    lastTurnDurationMs: 123,
+  }), {
+    bridgeLines: ["bridge-1"],
+    memoryLines: ["memory-1"],
+    lastTurnDurationMs: 123,
+  });
+  assert.deepEqual(createPromptTurnFailurePatch({
+    state,
+    nextAuthLabel: "api-key-file",
+    lastTurnDurationMs: 456,
+    isAuthFailure: true,
+    statusPanel: { title: "Status", lines: ["auth:api-key-file"] },
+  }), {
+    authLabel: "api-key-file",
+    currentTurnStartedAt: undefined,
+    lastTurnDurationMs: 456,
+    panel: { title: "Status", lines: ["auth:api-key-file"] },
+  });
+  assert.deepEqual(createPromptTurnFinalizePatch({ state }), {
+    isBusy: false,
+    busyStatus: undefined,
+    currentTurnStartedAt: undefined,
+  });
+});
+
+test("work-shell operational helpers resolve secure auth entry, inline command results, and memory operations", async () => {
+  const memoryPanel = await loadWorkShellMemoriesPanel({
+    cwd: "/repo",
+    sessionId: "work-1",
+    async listScopedMemoryLines({ scope }) {
+      return scope === "session" ? ["session-1"] : ["project-1"];
+    },
+  });
+  const rememberResult = await writeWorkShellRememberCommand({
+    command: { scope: "session", summary: "keep auth fix visible" },
+    cwd: "/repo",
+    sessionId: "work-1",
+    async writeScopedMemory({ scope, summary }) {
+      return { memoryId: `${scope}:${summary}` };
+    },
+    async listScopedMemoryLines() {
+      return ["session-1", "session-2"];
+    },
+    formatAgentTraceLine(event) {
+      return `memory ${event.summary}`;
+    },
+  });
   const appliedAuthIssues = [];
   const secureResult = await resolveSecureApiKeyEntrySubmission({
     line: "sk-secret-123 --org demo",
@@ -535,6 +607,14 @@ test("work-shell operational helpers resolve secure auth entry and inline comman
     onAuthProgressLines: (lines) => inlineProgress.push(lines),
   });
 
+  assert.deepEqual(memoryPanel, {
+    sessionMemory: ["session-1"],
+    projectMemory: ["project-1"],
+  });
+  assert.deepEqual(rememberResult, {
+    nextMemoryLines: ["session-1", "session-2"],
+    memoryTrace: "memory keep auth fix visible",
+  });
   assert.deepEqual(secureResult, {
     kind: "success",
     resultLines: ["API key login saved.", "Auth: api-key-file"],
