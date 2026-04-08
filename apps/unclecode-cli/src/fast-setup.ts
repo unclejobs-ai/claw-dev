@@ -1,5 +1,5 @@
 import { createRuntimeBroker } from "@unclecode/runtime-broker";
-import { resolveOpenAIAuthStatus } from "@unclecode/providers/openai-status";
+import { resolveEffectiveOpenAIAuthStatus } from "@unclecode/providers";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -16,7 +16,7 @@ export async function buildFastSetupReport(input: {
   readonly workspaceRoot: string;
   readonly env: NodeJS.ProcessEnv;
 }): Promise<string> {
-  const authStatus = await resolveOpenAIAuthStatus({ env: input.env });
+  const authStatus = await resolveEffectiveOpenAIAuthStatus({ env: input.env });
   const runtimeHealth = createRuntimeBroker({
     workingDirectory: input.workspaceRoot,
     runtimeMode: "local",

@@ -6,18 +6,18 @@ import {
   getProviderAdapter,
 } from "@unclecode/providers";
 
-test("openai provider exposes a model registry with the configured model first", () => {
-  const adapter = getProviderAdapter("openai");
+test("openai-api provider exposes a model registry with the configured model first", () => {
+  const adapter = getProviderAdapter("openai-api");
   const registry = adapter.getModelRegistry({ OPENAI_MODEL: "gpt-4.1" });
 
-  assert.equal(registry.providerId, "openai");
+  assert.equal(registry.providerId, "openai-api");
   assert.equal(registry.defaultModel, "gpt-5.4");
   assert.equal(registry.models[0], "gpt-4.1");
   assert.ok(registry.models.includes("gpt-5.4"));
 });
 
 test("provider adapter raises a capability mismatch error for unsupported requirements", () => {
-  const adapter = getProviderAdapter("openai");
+  const adapter = getProviderAdapter("openai-api");
 
   assert.throws(
     () => adapter.assertCapability("prompt-caching", { modelId: "gpt-5.4" }),
@@ -25,8 +25,8 @@ test("provider adapter raises a capability mismatch error for unsupported requir
   );
 });
 
-test("openai provider exposes model-specific reasoning support", () => {
-  const adapter = getProviderAdapter("openai");
+test("openai-api provider exposes model-specific reasoning support", () => {
+  const adapter = getProviderAdapter("openai-api");
 
   assert.deepEqual(adapter.getReasoningSupport({ modelId: "gpt-5.4" }), {
     status: "supported",

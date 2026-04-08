@@ -63,7 +63,7 @@ export type ResolveOpenAIAuthInput = {
 };
 
 export type OpenAIAuthStatus = {
-  readonly providerId: "openai";
+  readonly providerId: "openai-api";
   readonly activeSource: "api-key-env" | "api-key-file" | "oauth-env" | "oauth-file" | "none";
   readonly authType: "api-key" | "oauth" | "none";
   readonly organizationId: string | null;

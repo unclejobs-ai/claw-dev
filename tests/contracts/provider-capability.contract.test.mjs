@@ -7,7 +7,8 @@ test("provider-capability fixtures expose canonical provider metadata", () => {
   assert.deepEqual(PROVIDER_IDS, [
     "anthropic",
     "gemini",
-    "openai",
+    "openai-api",
+    "openai-codex",
     "groq",
     "ollama",
     "copilot",
@@ -31,6 +32,28 @@ test("provider-capability fixtures expose canonical provider metadata", () => {
     transport: "native",
     defaultModel: "gemini-2.5-flash",
     envKeys: ["GEMINI_API_KEY", "GEMINI_MODEL"],
+    supportsToolCalls: true,
+    supportsSessionMemory: true,
+    supportsPromptCaching: false,
+  });
+
+  assert.deepEqual(PROVIDER_CAPABILITIES["openai-api"], {
+    id: "openai-api",
+    label: "OpenAI API",
+    transport: "compat",
+    defaultModel: "gpt-5.4",
+    envKeys: ["OPENAI_API_KEY", "OPENAI_MODEL"],
+    supportsToolCalls: true,
+    supportsSessionMemory: true,
+    supportsPromptCaching: false,
+  });
+
+  assert.deepEqual(PROVIDER_CAPABILITIES["openai-codex"], {
+    id: "openai-codex",
+    label: "OpenAI Codex",
+    transport: "compat",
+    defaultModel: "gpt-5.4",
+    envKeys: ["OPENAI_AUTH_TOKEN", "OPENAI_MODEL"],
     supportsToolCalls: true,
     supportsSessionMemory: true,
     supportsPromptCaching: false,

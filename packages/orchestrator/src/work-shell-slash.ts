@@ -146,7 +146,7 @@ function getModelSuggestions(
   entries: readonly { readonly command: string; readonly description: string }[],
   options?: WorkShellSlashOptions,
 ): readonly { readonly command: string; readonly description: string }[] {
-  const provider = options?.provider ?? "openai";
+  const provider = options?.provider ?? "openai-api";
   const currentModel = options?.currentModel ?? "gpt-5.4";
   const dynamic = listProviderModelSuggestions(provider, currentModel);
   const modelEntries = [

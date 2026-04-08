@@ -7,7 +7,9 @@ import {
 } from "@unclecode/contracts";
 import {
   getProviderAdapter,
+  normalizeOpenAIProviderId,
   resolveOpenAIAuth,
+  resolvePreferredOpenAIProvider,
   type ReasoningSupport,
 } from "@unclecode/providers";
 import { config as loadEnv } from "dotenv";
@@ -17,7 +19,7 @@ import { loadExtensionConfigOverlays } from "./extension-registry.js";
 
 loadEnv({ quiet: true });
 
-const providerSchema = z.enum(["anthropic", "gemini", "openai"]);
+const providerSchema = z.enum(["anthropic", "gemini", "openai", "openai-api", "openai-codex"]);
 
 const envSchema = z.object({
   LLM_PROVIDER: providerSchema.default("openai"),
@@ -51,7 +53,7 @@ function resolveReasoningConfig(input: {
   mode: ModeProfileId;
   override?: ModeReasoningEffort;
 }): AppReasoningConfig {
-  if (input.provider !== "openai") {
+  if (input.provider !== "openai-api" && input.provider !== "openai-codex") {
     return {
       effort: "unsupported",
       source: "model-capability",
@@ -62,7 +64,7 @@ function resolveReasoningConfig(input: {
     };
   }
 
-  const adapter = getProviderAdapter("openai");
+  const adapter = getProviderAdapter(input.provider);
   const support = adapter.getReasoningSupport({ modelId: input.model });
 
   if (support.status === "unsupported") {
@@ -81,10 +83,13 @@ function resolveReasoningConfig(input: {
 }
 
 export async function loadConfig(
-  overrides?: Partial<Pick<AppConfig, "provider" | "model">> & {
+  overrides?: {
+    provider?: AppConfig["provider"] | "openai";
+    model?: string;
     cwd?: string;
     reasoning?: ModeReasoningEffort;
-    readOpenAiAuthFile?: () => Promise<string>;
+    readOpenAiAuthFile?: ((authPath?: string) => Promise<string>) | undefined;
+    readCodexAuthFile?: ((authPath?: string) => Promise<string>) | undefined;
     allowProblematicOpenAIAuth?: boolean;
   },
 ): Promise<AppConfig> {
@@ -93,7 +98,8 @@ export async function loadConfig(
     const message = parsed.error.issues.map((issue) => issue.message).join(", ");
     throw new Error(message);
   }
-  const provider = overrides?.provider ?? parsed.data.LLM_PROVIDER;
+  const requestedProvider = overrides?.provider ?? parsed.data.LLM_PROVIDER;
+  const envHasExplicitProvider = typeof process.env.LLM_PROVIDER === "string" && process.env.LLM_PROVIDER.trim().length > 0;
   const workspaceRoot = overrides?.cwd ?? process.cwd();
   const mode = explainUncleCodeConfig({
     workspaceRoot,
@@ -104,7 +110,40 @@ export async function loadConfig(
     }),
   }).activeMode.id;
 
-  if (provider === "openai") {
+  const preferredOpenAI = await resolvePreferredOpenAIProvider({
+    env: process.env,
+    ...(overrides?.readCodexAuthFile ? { readCodexAuthFile: overrides.readCodexAuthFile } : {}),
+    ...(overrides?.readOpenAiAuthFile ? { readApiAuthFile: overrides.readOpenAiAuthFile } : {}),
+  });
+
+  const provider = (
+    !overrides?.provider && !envHasExplicitProvider && requestedProvider === "openai"
+      ? preferredOpenAI.providerId ?? "openai-api"
+      : normalizeOpenAIProviderId(requestedProvider) ?? requestedProvider
+  ) as ProviderId;
+
+  if (provider === "openai-codex") {
+    if (preferredOpenAI.providerId === "openai-codex" && preferredOpenAI.bearerToken) {
+      const model = overrides?.model ?? parsed.data.OPENAI_MODEL;
+      return {
+        provider,
+        apiKey: preferredOpenAI.bearerToken,
+        model,
+        mode,
+        authLabel: preferredOpenAI.authLabel,
+        reasoning: resolveReasoningConfig({
+          provider,
+          model,
+          mode,
+          ...(overrides?.reasoning ? { override: overrides.reasoning } : {}),
+        }),
+      };
+    }
+
+    throw new Error("OpenAI Codex login is required. Run unclecode auth login to sign in with Codex/ChatGPT OAuth.");
+  }
+
+  if (provider === "openai-api") {
     const apiKey = parsed.data.OPENAI_API_KEY?.trim();
     if (apiKey) {
       const model = overrides?.model ?? parsed.data.OPENAI_MODEL;

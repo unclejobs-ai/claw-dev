@@ -10,14 +10,16 @@ import type { ModeProfileId } from "@unclecode/contracts";
 import { loadExtensionConfigOverlays } from "@unclecode/orchestrator";
 import {
   buildOpenAIAuthorizationUrl,
+  clearOpenAICredentials,
+  clearOpenAICodexCredentials,
   completeOpenAIBrowserLogin,
   completeOpenAICodexDeviceLogin,
   completeOpenAIDeviceLogin,
   createOpenAIPkcePair,
-  formatOpenAIAuthStatus,
-  clearOpenAICredentials,
-  resolveOpenAIAuthStatus,
+  formatEffectiveOpenAIAuthStatus,
+  resolveEffectiveOpenAIAuthStatus,
   resolveReusableOpenAIOAuthClientId,
+  writeOpenAICodexCredentials,
   writeOpenAICredentials,
 } from "@unclecode/providers";
 import { Command, Option } from "commander";
@@ -89,7 +91,19 @@ async function readApiKeyFromStdin(): Promise<string> {
   });
 }
 
-function formatLogoutResult(status: Awaited<ReturnType<typeof resolveOpenAIAuthStatus>>): readonly string[] {
+function getOpenAIApiCredentialsPath(env: NodeJS.ProcessEnv): string {
+  return env.UNCLECODE_OPENAI_CREDENTIALS_PATH?.trim() || path.join(os.homedir(), ".unclecode", "credentials", "openai.json");
+}
+
+function getOpenAICodexCredentialsPath(env: NodeJS.ProcessEnv): string {
+  return env.UNCLECODE_OPENAI_CODEX_CREDENTIALS_PATH?.trim() || path.join(os.homedir(), ".unclecode", "credentials", "openai-codex.json");
+}
+
+function formatOpenAIProviderDisplayName(providerId: "openai-api" | "openai-codex"): string {
+  return providerId === "openai-codex" ? "OpenAI Codex" : "OpenAI API";
+}
+
+function formatLogoutResult(status: Awaited<ReturnType<typeof resolveEffectiveOpenAIAuthStatus>>): readonly string[] {
   if (status.activeSource === "none") {
     return ["Signed out.", "Auth: none"];
   }
@@ -206,9 +220,8 @@ export function createUncleCodeProgram(): Command {
     .option("--project <project>", "Store default OpenAI project context with an API key login")
     .option("--print", "Print the login URL explicitly (default browser behavior today)")
     .action(async (options: { browser?: boolean; device?: boolean; apiKeyStdin?: boolean; apiKey?: string; org?: string; project?: string; print?: boolean }) => {
-      const credentialsPath =
-        process.env.UNCLECODE_OPENAI_CREDENTIALS_PATH?.trim() ||
-        path.join(os.homedir(), ".unclecode", "credentials", "openai.json");
+      const apiCredentialsPath = getOpenAIApiCredentialsPath(process.env);
+      const codexCredentialsPath = getOpenAICodexCredentialsPath(process.env);
 
       if (options.apiKey?.trim()) {
         throw new Error("Passing API keys on argv is disabled. Use `unclecode auth login --api-key-stdin` and pipe the key on stdin.");
@@ -225,7 +238,7 @@ export function createUncleCodeProgram(): Command {
         }
 
         await writeOpenAICredentials({
-          credentialsPath,
+          credentialsPath: apiCredentialsPath,
           credentials: {
             authType: "api-key",
             apiKey,
@@ -244,9 +257,10 @@ export function createUncleCodeProgram(): Command {
       const shouldUseDevice = Boolean(options.device || (!options.browser && !options.print && !browserClientId && deviceClientId));
 
       if (!browserClientId && !deviceClientId) {
-        const status = await resolveOpenAIAuthStatus({ env: process.env });
+        const status = await resolveEffectiveOpenAIAuthStatus({ env: process.env });
         if (status.activeSource !== "none" && !status.isExpired) {
           process.stdout.write("Saved auth found.\n");
+          process.stdout.write(`Provider: ${formatOpenAIProviderDisplayName(status.providerId)}\n`);
           process.stdout.write(`Auth: ${status.activeSource}\n`);
           process.stdout.write("Use `unclecode auth status` to inspect it. The next model request will verify provider access.\n");
           return;
@@ -275,7 +289,13 @@ export function createUncleCodeProgram(): Command {
         if (!browserClientId && reusableClientId) {
           await completeOpenAICodexDeviceLogin({
             clientId: deviceLoginClientId,
-            credentialsPath,
+            credentialsPath: codexCredentialsPath,
+            writeCredentials: async ({ credentialsPath, credentials }) => {
+              if (!credentials || credentials.authType !== "oauth") {
+                throw new Error("OpenAI Codex login only supports oauth credentials.");
+              }
+              await writeOpenAICodexCredentials({ credentialsPath, credentials });
+            },
             ...(baseUrl ? { baseUrl } : {}),
             onDeviceCode: (info) => {
               process.stdout.write(`Please visit ${info.verificationUri} and enter code: ${info.userCode}\n`);
@@ -285,7 +305,7 @@ export function createUncleCodeProgram(): Command {
           await completeOpenAIDeviceLogin({
             clientId: deviceLoginClientId,
             scopes: ["openid", "profile", "offline_access", "model.request", "api.model.read"],
-            credentialsPath,
+            credentialsPath: apiCredentialsPath,
             ...(baseUrl ? { baseUrl } : {}),
             onDeviceCode: (info) => {
               process.stdout.write(`Please visit ${info.verificationUri} and enter code: ${info.userCode}\n`);
@@ -293,6 +313,7 @@ export function createUncleCodeProgram(): Command {
           });
         }
 
+        process.stdout.write(`Provider: ${!browserClientId && reusableClientId ? "OpenAI Codex" : "OpenAI API"}\n`);
         process.stdout.write("Login successful.\n");
         return;
       }
@@ -324,7 +345,7 @@ export function createUncleCodeProgram(): Command {
         callbackUrl,
         expectedState: pkce.state,
         codeVerifier: pkce.codeVerifier,
-        credentialsPath,
+        credentialsPath: apiCredentialsPath,
         ...(baseUrl ? { baseUrl } : {}),
       });
       process.stdout.write("Login successful.\n");
@@ -371,20 +392,18 @@ export function createUncleCodeProgram(): Command {
     .command("status")
     .description("Show OpenAI auth source, org/project context, and expiry state")
     .action(async () => {
-      const status = await resolveOpenAIAuthStatus({ env: process.env });
+      const status = await resolveEffectiveOpenAIAuthStatus({ env: process.env });
 
-      process.stdout.write(`${formatOpenAIAuthStatus(status)}\n`);
+      process.stdout.write(`${formatEffectiveOpenAIAuthStatus(status)}\n`);
     });
 
   authCommand
     .command("logout")
     .description("Clear locally stored UncleCode auth credentials")
     .action(async () => {
-      const credentialsPath =
-        process.env.UNCLECODE_OPENAI_CREDENTIALS_PATH?.trim() ||
-        path.join(os.homedir(), ".unclecode", "credentials", "openai.json");
-      await clearOpenAICredentials({ credentialsPath });
-      const status = await resolveOpenAIAuthStatus({ env: process.env });
+      await clearOpenAICredentials({ credentialsPath: getOpenAIApiCredentialsPath(process.env) });
+      await clearOpenAICodexCredentials({ credentialsPath: getOpenAICodexCredentialsPath(process.env) });
+      const status = await resolveEffectiveOpenAIAuthStatus({ env: process.env });
       for (const line of formatLogoutResult(status)) {
         process.stdout.write(`${line}\n`);
       }

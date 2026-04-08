@@ -22,7 +22,8 @@ export type WorkShellEntryPresentation = {
 };
 
 export function formatWorkShellProviderTitle(provider: string): string {
-  if (provider === "openai") return "UncleCode · OpenAI";
+  if (provider === "openai" || provider === "openai-api") return "UncleCode · OpenAI API";
+  if (provider === "openai-codex") return "UncleCode · OpenAI Codex";
   if (provider === "gemini") return "UncleCode · Gemini";
   if (provider === "anthropic") return "UncleCode · Anthropic";
   return `UncleCode · ${provider}`;

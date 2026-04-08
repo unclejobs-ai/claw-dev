@@ -111,7 +111,7 @@ type ManagedDashboardSession = {
 
 type ParsedArgs = {
   cwd: string;
-  provider?: "anthropic" | "gemini" | "openai";
+  provider?: "anthropic" | "gemini" | "openai" | "openai-api" | "openai-codex";
   model?: string;
   reasoning?: ModeReasoningEffort;
   sessionId?: string;
@@ -130,7 +130,7 @@ function printHelp(): void {
   process.stdout.write(`  --help   Show this help text\n`);
   process.stdout.write(`  --tools  List available local tools\n`);
   process.stdout.write(`  --cwd    Set the workspace root\n`);
-  process.stdout.write(`  --provider  Choose openai, anthropic, or gemini\n`);
+  process.stdout.write(`  --provider  Choose openai-api, openai-codex, anthropic, or gemini (legacy: openai)\n`);
   process.stdout.write(`  --model  Override the model for the chosen provider\n`);
   process.stdout.write(`  --reasoning  Override reasoning effort: low, medium, high\n`);
   process.stdout.write(`  --session-id  Resume a persisted work session id\n`);
@@ -143,9 +143,13 @@ function printTools(): void {
   }
 }
 
-function resolveRuntimeProvider(provider: string): "anthropic" | "gemini" | "openai" {
-  if (provider === "anthropic" || provider === "gemini" || provider === "openai") {
+function resolveRuntimeProvider(provider: string): "anthropic" | "gemini" | "openai-api" | "openai-codex" {
+  if (provider === "anthropic" || provider === "gemini" || provider === "openai-codex" || provider === "openai-api") {
     return provider;
+  }
+
+  if (provider === "openai") {
+    return "openai-api";
   }
 
   throw new Error(`Unsupported runtime provider: ${provider}`);
@@ -153,7 +157,7 @@ function resolveRuntimeProvider(provider: string): "anthropic" | "gemini" | "ope
 
 function parseArgs(argv: string[]): ParsedArgs {
   let cwd = process.cwd();
-  let provider: "anthropic" | "gemini" | "openai" | undefined;
+  let provider: "anthropic" | "gemini" | "openai" | "openai-api" | "openai-codex" | undefined;
   let model: string | undefined;
   let reasoning: ModeReasoningEffort | undefined;
   let sessionId: string | undefined;
@@ -181,7 +185,13 @@ function parseArgs(argv: string[]): ParsedArgs {
     }
     if (arg === "--provider") {
       const next = argv[i + 1];
-      if (next === "anthropic" || next === "gemini" || next === "openai") {
+      if (
+        next === "anthropic" ||
+        next === "gemini" ||
+        next === "openai" ||
+        next === "openai-api" ||
+        next === "openai-codex"
+      ) {
         provider = next;
       }
       i += 1;
@@ -498,10 +508,10 @@ async function loadWorkCliSession(argv: readonly string[]) {
     };
   };
 
-  const authStatus = config.provider === "openai"
+  const authStatus = config.provider === "openai-api"
     ? await resolveOpenAIAuthStatus({ env: process.env })
     : undefined;
-  const browserOAuthAvailable = config.provider === "openai"
+  const browserOAuthAvailable = config.provider === "openai-api"
     ? Boolean(process.env.OPENAI_OAUTH_CLIENT_ID?.trim())
     : false;
   const authIssueLines = deriveAuthIssueLines({

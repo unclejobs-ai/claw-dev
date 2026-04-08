@@ -44,8 +44,8 @@ export async function maybeRunFastCliPath(args: readonly string[]): Promise<bool
 
   switch (path) {
     case "auth-status": {
-      const { formatOpenAIAuthStatus, resolveOpenAIAuthStatus } = await import("@unclecode/providers/openai-status");
-      process.stdout.write(`${formatOpenAIAuthStatus(await resolveOpenAIAuthStatus({ env: process.env }))}\n`);
+      const { formatEffectiveOpenAIAuthStatus, resolveEffectiveOpenAIAuthStatus } = await import("@unclecode/providers");
+      process.stdout.write(`${formatEffectiveOpenAIAuthStatus(await resolveEffectiveOpenAIAuthStatus({ env: process.env }))}\n`);
       return true;
     }
     case "doctor": {

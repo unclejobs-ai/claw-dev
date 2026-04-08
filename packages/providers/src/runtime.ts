@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { ExecutionTraceEvent, ModeReasoningEffort } from "@unclecode/contracts";
 import Anthropic from "@anthropic-ai/sdk";
 import type {
@@ -6,6 +8,12 @@ import type {
 } from "@anthropic-ai/sdk/resources/messages";
 import { FunctionCallingConfigMode, GoogleGenAI } from "@google/genai";
 
+import {
+  openAICompatibleMessagesToResponsesInput,
+  openAICompatibleToolsToResponsesTools,
+  parseResponsesSseToResult,
+  sliceResponsesInputToLatestToolTurn,
+} from "../../../shared/openaiResponsesCompat.js";
 import type { ReasoningSupport } from "./types.js";
 
 export type AgentTurnResult = {
@@ -27,7 +35,7 @@ export type ProviderInputAttachment = {
 
 export type ProviderTraceListener = (event: ProviderToolTraceEvent) => void;
 
-export type ProviderName = "anthropic" | "gemini" | "openai";
+export type ProviderName = "anthropic" | "gemini" | "openai" | "openai-api" | "openai-codex";
 
 export type RuntimeReasoningConfig = {
   effort: ModeReasoningEffort | "unsupported";
@@ -278,7 +286,7 @@ export class OpenAIProvider implements LlmProvider {
           emitProviderTrace(this.traceListener, {
             type: "tool.started",
             level: "default",
-            provider: "openai",
+            provider: "openai-api",
             toolName: name,
             toolCallId: toolCall.id ?? name,
             input: parsedArgs,
@@ -289,7 +297,7 @@ export class OpenAIProvider implements LlmProvider {
           emitProviderTrace(this.traceListener, {
             type: "tool.completed",
             level: "default",
-            provider: "openai",
+            provider: "openai-api",
             toolName: name,
             toolCallId: toolCall.id ?? name,
             isError: result.isError ?? false,
@@ -309,7 +317,230 @@ export class OpenAIProvider implements LlmProvider {
           emitProviderTrace(this.traceListener, {
             type: "tool.completed",
             level: "default",
-            provider: "openai",
+            provider: "openai-api",
+            toolName: name,
+            toolCallId: toolCall.id ?? name,
+            isError: true,
+            output: message,
+            startedAt: completedAt,
+            completedAt,
+            durationMs: 0,
+          });
+          this.messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id ?? name,
+            content: message,
+          });
+        }
+      }
+    }
+
+    return { text: assistantText || "Stopped after reaching the tool iteration limit." };
+  }
+}
+
+export class OpenAICodexProvider implements LlmProvider {
+  private apiKey: string;
+  private model: string;
+  private readonly cwd: string;
+  private readonly fetchImpl: OpenAIFetch;
+  private readonly systemPrompt: string;
+  private readonly toolRuntime: ToolRuntime;
+  private reasoning: RuntimeReasoningConfig;
+  private traceListener: ProviderTraceListener | undefined;
+  private readonly messages: OpenAIMessage[];
+
+  constructor(args: {
+    apiKey: string;
+    model: string;
+    cwd: string;
+    reasoning: RuntimeReasoningConfig;
+    toolRuntime?: ToolRuntime;
+    fetchImpl?: OpenAIFetch;
+    traceListener?: ProviderTraceListener;
+    systemPrompt?: string;
+  }) {
+    this.apiKey = args.apiKey;
+    this.model = args.model;
+    this.cwd = args.cwd;
+    this.systemPrompt = args.systemPrompt?.trim()
+      ? `${SYSTEM_PROMPT}\n\n${args.systemPrompt.trim()}`
+      : SYSTEM_PROMPT;
+    this.toolRuntime = args.toolRuntime ?? EMPTY_TOOL_RUNTIME;
+    this.reasoning = args.reasoning;
+    this.fetchImpl = args.fetchImpl ?? fetch;
+    this.traceListener = args.traceListener;
+    this.messages = [{ role: "system", content: this.systemPrompt }];
+  }
+
+  updateRuntimeSettings(settings: {
+    reasoning?: RuntimeReasoningConfig | undefined;
+    model?: string | undefined;
+  }): void {
+    if (settings.reasoning) {
+      this.reasoning = settings.reasoning;
+    }
+    if (settings.model?.trim()) {
+      this.model = settings.model.trim();
+    }
+  }
+
+  clear(): void {
+    this.messages.splice(0, this.messages.length, {
+      role: "system",
+      content: this.systemPrompt,
+    });
+  }
+
+  setTraceListener(listener?: ProviderTraceListener): void {
+    this.traceListener = listener;
+  }
+
+  updateAuthToken(apiKey: string): void {
+    this.apiKey = apiKey.trim();
+  }
+
+  async runTurn(
+    prompt: string,
+    attachments: readonly ProviderInputAttachment[] = [],
+  ): Promise<AgentTurnResult> {
+    const attachmentSuffix = attachments.length > 0
+      ? `\n\n[Attached images omitted from Codex runtime payload: ${attachments.map((attachment) => attachment.displayName).join(", ")}]`
+      : "";
+
+    this.messages.push({
+      role: "user",
+      content: `${prompt}${attachmentSuffix}`,
+    });
+
+    let assistantText = "";
+
+    for (let i = 0; i < 8; i += 1) {
+      const response = await this.fetchImpl(
+        "https://chatgpt.com/backend-api/codex/responses",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiKey}`,
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+            "User-Agent": "unclecode/0.1.0",
+            originator: "unclecode_cli_ts",
+            "x-client-request-id": randomUUID(),
+          },
+          body: JSON.stringify({
+            model: this.model,
+            instructions: this.systemPrompt,
+            input: sliceResponsesInputToLatestToolTurn(openAICompatibleMessagesToResponsesInput(this.messages)),
+            tools: openAICompatibleToolsToResponsesTools(
+              this.toolRuntime.definitions.map((tool) => ({
+                type: "function",
+                function: {
+                  name: tool.name,
+                  description: tool.description,
+                  parameters: tool.input_schema,
+                },
+              })),
+            ),
+            tool_choice: "auto",
+            parallel_tool_calls: true,
+            reasoning: { effort: "none" },
+            store: false,
+            stream: true,
+            include: [],
+            text: {
+              format: { type: "text" },
+              verbosity: "medium",
+            },
+          }),
+        },
+      );
+
+      const responseText = await response.text().catch(() => "");
+      if (!response.ok) {
+        throw new Error(
+          responseText.trim().length > 0
+            ? `OpenAI Codex request failed with status ${response.status}: ${responseText.trim()}`
+            : `OpenAI Codex request failed with status ${response.status}`,
+        );
+      }
+
+      const payload = parseResponsesSseToResult(responseText);
+      const toolCalls = payload.content
+        .filter((item): item is { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } => item.type === "tool_use")
+        .map((item) => ({
+          id: item.id,
+          function: {
+            name: item.name,
+            arguments: JSON.stringify(item.input ?? {}),
+          },
+        }));
+      assistantText = payload.content
+        .filter((item): item is { type: "text"; text: string } => item.type === "text")
+        .map((item) => item.text)
+        .join("");
+
+      this.messages.push({
+        role: "assistant",
+        content: assistantText,
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+      });
+
+      if (toolCalls.length === 0) {
+        return { text: assistantText };
+      }
+
+      for (const toolCall of toolCalls) {
+        const name = toolCall.function?.name ?? "";
+        const handler = this.toolRuntime.handlers[name];
+        if (!handler) {
+          this.messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id ?? name,
+            content: `Unknown tool: ${name}`,
+          });
+          continue;
+        }
+
+        try {
+          const rawArgs = toolCall.function?.arguments ?? "{}";
+          const parsedArgs = JSON.parse(rawArgs) as Record<string, unknown>;
+          const startedAt = Date.now();
+          emitProviderTrace(this.traceListener, {
+            type: "tool.started",
+            level: "default",
+            provider: "openai-codex",
+            toolName: name,
+            toolCallId: toolCall.id ?? name,
+            input: parsedArgs,
+            startedAt,
+          });
+          const result = await handler(parsedArgs, this.cwd);
+          const completedAt = Date.now();
+          emitProviderTrace(this.traceListener, {
+            type: "tool.completed",
+            level: "default",
+            provider: "openai-codex",
+            toolName: name,
+            toolCallId: toolCall.id ?? name,
+            isError: result.isError ?? false,
+            output: result.content,
+            startedAt,
+            completedAt,
+            durationMs: completedAt - startedAt,
+          });
+          this.messages.push({
+            role: "tool",
+            tool_call_id: toolCall.id ?? name,
+            content: result.content,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const completedAt = Date.now();
+          emitProviderTrace(this.traceListener, {
+            type: "tool.completed",
+            level: "default",
+            provider: "openai-codex",
             toolName: name,
             toolCallId: toolCall.id ?? name,
             isError: true,
@@ -719,7 +950,18 @@ export function createRuntimeProvider(args: CreateRuntimeProviderArgs): LlmProvi
     return args.providerOverride;
   }
 
-  if (args.provider === "openai") {
+  if (args.provider === "openai-codex") {
+    return new OpenAICodexProvider({
+      apiKey: args.apiKey,
+      model: args.model,
+      cwd: args.cwd,
+      reasoning: args.reasoning,
+      ...(args.toolRuntime ? { toolRuntime: args.toolRuntime } : {}),
+      ...(args.systemPrompt ? { systemPrompt: args.systemPrompt } : {}),
+    });
+  }
+
+  if (args.provider === "openai" || args.provider === "openai-api") {
     return new OpenAIProvider({
       apiKey: args.apiKey,
       model: args.model,

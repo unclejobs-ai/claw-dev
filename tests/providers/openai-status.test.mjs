@@ -49,7 +49,7 @@ test("resolveOpenAIAuthStatus reports api-key-file and stored org/project contex
 
 test("formatOpenAIAuthStatus redacts secrets from rendered output", () => {
   const rendered = formatOpenAIAuthStatus({
-    providerId: "openai",
+    providerId: "openai-api",
     activeSource: "api-key-env",
     authType: "api-key",
     organizationId: "org_123",

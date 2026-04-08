@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -146,11 +146,13 @@ test("runTuiSessionCenterAction executes auth status inline", async () => {
       workspaceRoot: cwd,
       env: {
         ...process.env,
+        HOME: cwd,
+        OPENAI_AUTH_TOKEN: "",
         OPENAI_API_KEY: "sk-test-123",
       },
     });
 
-    assert.match(lines.join("\n"), /provider: openai/);
+    assert.match(lines.join("\n"), /provider: openai-api/);
     assert.match(lines.join("\n"), /source: api-key-env/);
   } finally {
     rmSync(cwd, { recursive: true, force: true });
@@ -167,6 +169,8 @@ test("runTuiSessionCenterAction can save api-key auth inline", async () => {
       workspaceRoot: cwd,
       env: {
         ...process.env,
+        HOME: cwd,
+        OPENAI_AUTH_TOKEN: "",
         UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
       },
       prompt: "sk-file-123",
@@ -178,6 +182,8 @@ test("runTuiSessionCenterAction can save api-key auth inline", async () => {
       workspaceRoot: cwd,
       env: {
         ...process.env,
+        HOME: cwd,
+        OPENAI_AUTH_TOKEN: "",
         UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
       },
     });
@@ -199,6 +205,8 @@ test("runTuiSessionCenterAction can clear stored auth inline", async () => {
       workspaceRoot: cwd,
       env: {
         ...process.env,
+        HOME: cwd,
+        OPENAI_AUTH_TOKEN: "",
         UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
       },
     });
@@ -209,6 +217,8 @@ test("runTuiSessionCenterAction can clear stored auth inline", async () => {
       workspaceRoot: cwd,
       env: {
         ...process.env,
+        HOME: cwd,
+        OPENAI_AUTH_TOKEN: "",
         UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
       },
     });
@@ -230,6 +240,8 @@ test("runTuiSessionCenterAction auth logout reports remaining env auth honestly"
       workspaceRoot: cwd,
       env: {
         ...process.env,
+        HOME: cwd,
+        OPENAI_AUTH_TOKEN: "",
         OPENAI_API_KEY: "sk-env-456",
         UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
       },
@@ -241,6 +253,8 @@ test("runTuiSessionCenterAction auth logout reports remaining env auth honestly"
       workspaceRoot: cwd,
       env: {
         ...process.env,
+        HOME: cwd,
+        OPENAI_AUTH_TOKEN: "",
         OPENAI_API_KEY: "sk-env-456",
         UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
       },
@@ -289,6 +303,7 @@ test("runTuiSessionCenterAction completes browser login inline and writes creden
     ]);
     assert.deepEqual(lines, [
       "OAuth login complete.",
+      "Provider: OpenAI API",
       "Auth: oauth-file",
       "Route: browser-oauth",
     ]);
@@ -297,6 +312,8 @@ test("runTuiSessionCenterAction completes browser login inline and writes creden
       workspaceRoot: cwd,
       env: {
         ...process.env,
+        HOME: cwd,
+        OPENAI_AUTH_TOKEN: "",
         UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
       },
     });
@@ -320,7 +337,7 @@ test("runTuiSessionCenterAction falls back to device oauth when reusable codex c
       "utf8",
     );
 
-    const credentialsPath = path.join(cwd, "openai.json");
+    const credentialsPath = path.join(cwd, "openai-codex.json");
     const lines = await runTuiSessionCenterAction({
       actionId: "browser-login",
       workspaceRoot: cwd,
@@ -328,7 +345,7 @@ test("runTuiSessionCenterAction falls back to device oauth when reusable codex c
         ...process.env,
         HOME: fakeHome,
         OPENAI_OAUTH_CLIENT_ID: "",
-        UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
+        UNCLECODE_OPENAI_CODEX_CREDENTIALS_PATH: credentialsPath,
       },
       openExternalUrl: async () => undefined,
       fetch: async (url, init) => {
@@ -380,9 +397,12 @@ test("runTuiSessionCenterAction falls back to device oauth when reusable codex c
     });
 
     assert.equal(lines[0], "OAuth login complete.");
-    assert.equal(lines[1], "Auth: oauth-file");
+    assert.equal(lines[1], "Provider: OpenAI Codex");
+    assert.equal(lines[2], "Auth: oauth-file");
     assert.match(lines.join("\n"), /ABCD-EFGH/);
     assert.match(lines.join("\n"), /auth\.openai\.com\/codex\/device/);
+    const saved = JSON.parse(readFileSync(credentialsPath, "utf8"));
+    assert.equal(saved.refreshToken, "rt_device");
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }
@@ -416,6 +436,7 @@ test("runTuiSessionCenterAction reports existing oauth auth when browser client 
 
     assert.deepEqual(lines, [
       "Saved auth found.",
+      "Provider: OpenAI API",
       "Auth: oauth-file",
       "Use `unclecode auth status` to inspect it. The next model request will verify provider access.",
     ]);

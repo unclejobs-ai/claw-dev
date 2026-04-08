@@ -30,15 +30,20 @@ export function createWorkShellPaneRuntime<
 >(
   input: CreateWorkShellEngineInput<Attachment, Reasoning, TraceEvent>,
 ): WorkShellPaneRuntime<Attachment, Reasoning, TraceEvent> {
+  const normalizedProvider = input.options.provider === "openai"
+    ? "openai-api"
+    : input.options.provider;
+
   const slashOptions = {
     workspaceRoot: input.options.cwd,
     ...(input.userHomeDir ? { userHomeDir: input.userHomeDir } : {}),
     ...(
-      input.options.provider === "openai"
-      || input.options.provider === "anthropic"
-      || input.options.provider === "gemini"
+      normalizedProvider === "openai-api"
+      || normalizedProvider === "openai-codex"
+      || normalizedProvider === "anthropic"
+      || normalizedProvider === "gemini"
         ? {
-            provider: input.options.provider as "openai" | "anthropic" | "gemini",
+            provider: normalizedProvider as "openai-api" | "openai-codex" | "anthropic" | "gemini",
           }
         : {}
     ),

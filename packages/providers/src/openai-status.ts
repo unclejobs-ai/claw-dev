@@ -16,7 +16,7 @@ export async function resolveOpenAIAuthStatus(options: {
   const storedCredentials = credentialsPath ? await readOpenAICredentials({ credentialsPath }) : null;
 
   return {
-    providerId: "openai",
+    providerId: "openai-api",
     activeSource:
       auth.source === "env-openai-api-key"
         ? "api-key-env"

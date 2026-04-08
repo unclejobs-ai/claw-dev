@@ -23,7 +23,26 @@ function createWorkspaceWithMode(mode) {
   return workspaceRoot;
 }
 
-test("loadConfig supports openai provider selection", async () => {
+test("loadConfig supports openai-api provider selection", async () => {
+  const originalEnv = { ...process.env };
+
+  try {
+    process.env.LLM_PROVIDER = "openai-api";
+    process.env.OPENAI_API_KEY = "sk-test-123";
+    process.env.OPENAI_MODEL = "gpt-4.1-mini";
+
+    const config = await loadConfig();
+    assert.equal(config.provider, "openai-api");
+    assert.equal(config.apiKey, "sk-test-123");
+    assert.equal(config.model, "gpt-4.1-mini");
+    assert.equal(config.reasoning.effort, "unsupported");
+  } finally {
+    process.env = originalEnv;
+  }
+});
+
+
+test("loadConfig normalizes legacy openai provider selection to openai-api", async () => {
   const originalEnv = { ...process.env };
 
   try {
@@ -32,10 +51,42 @@ test("loadConfig supports openai provider selection", async () => {
     process.env.OPENAI_MODEL = "gpt-4.1-mini";
 
     const config = await loadConfig();
-    assert.equal(config.provider, "openai");
+    assert.equal(config.provider, "openai-api");
     assert.equal(config.apiKey, "sk-test-123");
-    assert.equal(config.model, "gpt-4.1-mini");
-    assert.equal(config.reasoning.effort, "unsupported");
+  } finally {
+    process.env = originalEnv;
+  }
+});
+
+
+test("loadConfig auto-selects openai-codex when reusable Codex auth exists even if an API key is also present", async () => {
+  const originalEnv = { ...process.env };
+  const root = mkdtempSync(path.join(tmpdir(), "unclecode-openai-codex-"));
+  const futureExp = Math.floor(Date.now() / 1000) + 3600;
+
+  try {
+    mkdirSync(path.join(root, ".codex"), { recursive: true });
+    writeFileSync(
+      path.join(root, ".codex", "auth.json"),
+      JSON.stringify({
+        auth_mode: "chatgpt",
+        tokens: {
+          access_token: buildJwtWithExp(futureExp),
+          refresh_token: "rt_123",
+        },
+      }),
+      "utf8",
+    );
+
+    delete process.env.LLM_PROVIDER;
+    process.env.OPENAI_API_KEY = "sk-test-123";
+    process.env.OPENAI_MODEL = "gpt-5.4";
+    process.env.HOME = root;
+
+    const config = await loadConfig();
+    assert.equal(config.provider, "openai-codex");
+    assert.equal(config.apiKey, buildJwtWithExp(futureExp));
+    assert.equal(config.authLabel, "oauth-file");
   } finally {
     process.env = originalEnv;
   }
@@ -52,7 +103,7 @@ test("loadConfig uses gpt-5.4 and mode-default reasoning for openai work session
     delete process.env.OPENAI_MODEL;
 
     const config = await loadConfig({ cwd: workspaceRoot });
-    assert.equal(config.provider, "openai");
+    assert.equal(config.provider, "openai-api");
     assert.equal(config.model, "gpt-5.4");
     assert.equal(config.mode, "analyze");
     assert.equal(config.reasoning.effort, "high");
@@ -97,7 +148,7 @@ test("loadConfig can reuse openai auth file when api key env is missing", async 
         }),
     });
 
-    assert.equal(config.provider, "openai");
+    assert.equal(config.provider, "openai-api");
     assert.equal(config.apiKey, "oauth-access-token");
   } finally {
     process.env = originalEnv;
@@ -150,7 +201,7 @@ test("loadConfig can degrade into shell-safe openai config when oauth lacks requ
         }),
     });
 
-    assert.equal(config.provider, "openai");
+    assert.equal(config.provider, "openai-api");
     assert.equal(config.apiKey, "");
     assert.equal(config.authLabel, "oauth-file");
     assert.match(config.authIssueMessage ?? "", /model\.request scope/i);

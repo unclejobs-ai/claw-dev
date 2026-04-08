@@ -26,7 +26,7 @@ test("CodingAgent emits honest turn traces around a successful turn", async () =
   };
 
   const agent = new CodingAgent({
-    provider: "openai",
+    provider: "openai-api",
     apiKey: "sk-test-123",
     model: "gpt-5.4",
     cwd: process.cwd(),
@@ -43,7 +43,7 @@ test("CodingAgent emits honest turn traces around a successful turn", async () =
     "provider.calling",
     "turn.completed",
   ]);
-  assert.equal(traces[1]?.provider, "openai");
+  assert.equal(traces[1]?.provider, "openai-api");
   assert.equal(traces[1]?.model, "gpt-5.4");
   assert.equal(traces.filter((event) => event.type === "orchestrator.step").length, 0);
 });
@@ -60,7 +60,7 @@ test("CodingAgent keeps failures honest without fake orchestrator steps", async 
   };
 
   const agent = new CodingAgent({
-    provider: "openai",
+    provider: "openai-api",
     apiKey: "sk-test-123",
     model: "gpt-5.4",
     cwd: process.cwd(),
@@ -93,7 +93,7 @@ test("CodingAgent can refresh provider auth tokens in place", () => {
   };
 
   const agent = new CodingAgent({
-    provider: "openai",
+    provider: "openai-api",
     apiKey: "sk-test-123",
     model: "gpt-5.4",
     cwd: process.cwd(),

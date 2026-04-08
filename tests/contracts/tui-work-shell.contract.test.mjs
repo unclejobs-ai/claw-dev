@@ -51,7 +51,18 @@ import {
 } from "../../packages/tui/src/index.tsx";
 
 test("formatWorkShellProviderTitle humanizes known providers for the unified work tab", () => {
-  assert.equal(formatWorkShellProviderTitle("openai"), "UncleCode · OpenAI");
+  assert.equal(
+    formatWorkShellProviderTitle("openai-api"),
+    "UncleCode · OpenAI API",
+  );
+  assert.equal(
+    formatWorkShellProviderTitle("openai-codex"),
+    "UncleCode · OpenAI Codex",
+  );
+  assert.equal(
+    formatWorkShellProviderTitle("openai"),
+    "UncleCode · OpenAI API",
+  );
   assert.equal(formatWorkShellProviderTitle("gemini"), "UncleCode · Gemini");
   assert.equal(
     formatWorkShellProviderTitle("anthropic"),

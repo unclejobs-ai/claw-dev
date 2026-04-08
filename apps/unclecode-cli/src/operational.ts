@@ -18,15 +18,17 @@ import type { ModeProfileId } from "@unclecode/contracts";
 import { MODE_PROFILE_IDS, MODE_PROFILES } from "@unclecode/contracts";
 import {
   buildOpenAIAuthorizationUrl,
+  clearOpenAICredentials,
+  clearOpenAICodexCredentials,
   completeOpenAIBrowserLogin,
   completeOpenAICodexDeviceLogin,
   createOpenAIPkcePair,
-  clearOpenAICredentials,
-  formatOpenAIAuthStatus,
+  formatEffectiveOpenAIAuthStatus,
+  resolveEffectiveOpenAIAuthStatus,
   requestOpenAICodexDeviceAuthorization,
   requestOpenAIDeviceAuthorization,
-  resolveOpenAIAuthStatus,
   resolveReusableOpenAIOAuthClientId,
+  writeOpenAICodexCredentials,
   writeOpenAICredentials,
 } from "@unclecode/providers";
 import { createRuntimeBroker } from "@unclecode/runtime-broker";
@@ -51,12 +53,16 @@ export function getProjectConfigPath(workspaceRoot: string): string {
   return path.join(workspaceRoot, ".unclecode", "config.json");
 }
 
-function formatAuthLogoutLines(status: Awaited<ReturnType<typeof resolveOpenAIAuthStatus>>): readonly string[] {
+function formatAuthLogoutLines(status: Awaited<ReturnType<typeof resolveEffectiveOpenAIAuthStatus>>): readonly string[] {
   if (status.activeSource === "none") {
     return ["Signed out.", "Auth: none"];
   }
 
   return ["Local credentials cleared.", `Auth: ${status.activeSource}`];
+}
+
+function formatOpenAIProviderDisplayName(providerId: "openai-api" | "openai-codex"): string {
+  return providerId === "openai-codex" ? "OpenAI Codex" : "OpenAI API";
 }
 
 async function readPersistedProjectConfig(workspaceRoot: string): Promise<PersistedProjectConfig> {
@@ -192,7 +198,7 @@ export async function buildDoctorReportData(input: {
   const configMs = elapsedSince(configStartedAt);
 
   const authStartedAt = Date.now();
-  const authStatus = await resolveOpenAIAuthStatus({ env: input.env });
+  const authStatus = await resolveEffectiveOpenAIAuthStatus({ env: input.env });
   const authMs = elapsedSince(authStartedAt);
 
   const runtimeStartedAt = Date.now();
@@ -296,7 +302,7 @@ export async function buildSetupReport(input: {
   readonly workspaceRoot: string;
   readonly env: NodeJS.ProcessEnv;
 }): Promise<string> {
-  const authStatus = await resolveOpenAIAuthStatus({ env: input.env });
+  const authStatus = await resolveEffectiveOpenAIAuthStatus({ env: input.env });
   const runtimeHealth = createRuntimeBroker({
     workingDirectory: input.workspaceRoot,
     runtimeMode: "local",
@@ -442,7 +448,7 @@ export async function buildTuiHomeState(input: {
       ...(input.userHomeDir ? { userHomeDir: input.userHomeDir } : input.env.HOME ? { userHomeDir: input.env.HOME } : {}),
     }),
   });
-  const authStatus = await resolveOpenAIAuthStatus({ env: input.env });
+  const authStatus = await resolveEffectiveOpenAIAuthStatus({ env: input.env });
   const sessions = await listSessions(input);
   const registry = loadMcpHostRegistry({
     workspaceRoot: input.workspaceRoot,
@@ -504,8 +510,12 @@ export async function buildTuiHomeState(input: {
   };
 }
 
-function getOpenAICredentialsPath(env: NodeJS.ProcessEnv): string {
+function getOpenAIApiCredentialsPath(env: NodeJS.ProcessEnv): string {
   return env.UNCLECODE_OPENAI_CREDENTIALS_PATH?.trim() || path.join(homedir(), ".unclecode", "credentials", "openai.json");
+}
+
+function getOpenAICodexCredentialsPath(env: NodeJS.ProcessEnv): string {
+  return env.UNCLECODE_OPENAI_CODEX_CREDENTIALS_PATH?.trim() || path.join(homedir(), ".unclecode", "credentials", "openai-codex.json");
 }
 
 async function openExternalUrl(url: string): Promise<void> {
@@ -635,10 +645,11 @@ export async function runTuiSessionCenterAction(input: {
       const reusableClientId = await resolveReusableOpenAIOAuthClientId({ env: input.env });
       const clientId = browserClientId || reusableClientId;
       if (!clientId) {
-        const status = await resolveOpenAIAuthStatus({ env: input.env });
+        const status = await resolveEffectiveOpenAIAuthStatus({ env: input.env });
         if (status.activeSource !== "none" && !status.isExpired) {
           return [
             "Saved auth found.",
+            `Provider: ${formatOpenAIProviderDisplayName(status.providerId)}`,
             `Auth: ${status.activeSource}`,
             "Use `unclecode auth status` to inspect it. The next model request will verify provider access.",
           ];
@@ -653,7 +664,8 @@ export async function runTuiSessionCenterAction(input: {
       }
 
       const baseUrl = input.env.OPENAI_OAUTH_BASE_URL?.trim();
-      const credentialsPath = getOpenAICredentialsPath(input.env);
+      const apiCredentialsPath = getOpenAIApiCredentialsPath(input.env);
+      const codexCredentialsPath = getOpenAICodexCredentialsPath(input.env);
       if (!browserClientId && reusableClientId) {
         const deviceClientId = reusableClientId;
         let deviceUserCode = "";
@@ -661,7 +673,13 @@ export async function runTuiSessionCenterAction(input: {
 
         await completeOpenAICodexDeviceLogin({
           clientId: deviceClientId,
-          credentialsPath,
+          credentialsPath: codexCredentialsPath,
+          writeCredentials: async ({ credentialsPath, credentials }) => {
+            if (!credentials || credentials.authType !== "oauth") {
+              throw new Error("OpenAI Codex login only supports oauth credentials.");
+            }
+            await writeOpenAICodexCredentials({ credentialsPath, credentials });
+          },
           ...(baseUrl ? { baseUrl } : {}),
           ...(input.fetch ? { fetch: input.fetch } : {}),
           onDeviceCode: async (info) => {
@@ -677,6 +695,7 @@ export async function runTuiSessionCenterAction(input: {
 
         return [
           "OAuth login complete.",
+          "Provider: OpenAI Codex",
           "Auth: oauth-file",
           "Route: device-oauth",
           ...(deviceUserCode ? [`Code used: ${deviceUserCode}`] : []),
@@ -710,7 +729,7 @@ export async function runTuiSessionCenterAction(input: {
         callbackUrl,
         expectedState: pkce.state,
         codeVerifier: pkce.codeVerifier,
-        credentialsPath,
+        credentialsPath: apiCredentialsPath,
         ...(baseUrl ? { baseUrl } : {}),
         ...(input.fetch ? { fetch: input.fetch } : {}),
       });
@@ -718,6 +737,7 @@ export async function runTuiSessionCenterAction(input: {
 
       return [
         "OAuth login complete.",
+        "Provider: OpenAI API",
         "Auth: oauth-file",
         "Route: browser-oauth",
       ];
@@ -749,7 +769,7 @@ export async function runTuiSessionCenterAction(input: {
       ];
     }
     case "auth-status":
-      return formatOpenAIAuthStatus(await resolveOpenAIAuthStatus({ env: input.env })).split("\n");
+      return formatEffectiveOpenAIAuthStatus(await resolveEffectiveOpenAIAuthStatus({ env: input.env })).split("\n");
     case "api-key-login": {
       const raw = input.prompt?.trim() ?? "";
       if (!raw) {
@@ -765,7 +785,7 @@ export async function runTuiSessionCenterAction(input: {
         return ["Paste an OpenAI API key and press Enter."];
       }
       await writeOpenAICredentials({
-        credentialsPath: getOpenAICredentialsPath(input.env),
+        credentialsPath: getOpenAIApiCredentialsPath(input.env),
         credentials: {
           authType: "api-key",
           apiKey,
@@ -776,8 +796,9 @@ export async function runTuiSessionCenterAction(input: {
       return ["API key login saved.", "Auth: api-key-file"];
     }
     case "auth-logout": {
-      await clearOpenAICredentials({ credentialsPath: getOpenAICredentialsPath(input.env) });
-      const status = await resolveOpenAIAuthStatus({ env: input.env });
+      await clearOpenAICredentials({ credentialsPath: getOpenAIApiCredentialsPath(input.env) });
+      await clearOpenAICodexCredentials({ credentialsPath: getOpenAICodexCredentialsPath(input.env) });
+      const status = await resolveEffectiveOpenAIAuthStatus({ env: input.env });
       return formatAuthLogoutLines(status);
     }
     case "doctor":

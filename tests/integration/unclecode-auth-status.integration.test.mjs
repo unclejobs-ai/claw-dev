@@ -24,23 +24,33 @@ const builtCliEntrypoint = path.join(
 );
 
 test("built unclecode cli reports auth status without leaking secrets", () => {
-  const result = spawnSync("node", [builtCliEntrypoint, "auth", "status"], {
-    cwd: workspaceRoot,
-    encoding: "utf8",
-    env: {
-      ...process.env,
-      OPENAI_API_KEY: "sk-test-123",
-      OPENAI_ORG_ID: "org_123",
-      OPENAI_PROJECT_ID: "proj_456",
-    },
-  });
+  const tempDir = mkdtempSync(
+    path.join(tmpdir(), "unclecode-auth-status-env-"),
+  );
 
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /openai/i);
-  assert.match(result.stdout, /api-key-env/i);
-  assert.match(result.stdout, /org_123/);
-  assert.match(result.stdout, /proj_456/);
-  assert.doesNotMatch(result.stdout, /sk-test-123/);
+  try {
+    const result = spawnSync("node", [builtCliEntrypoint, "auth", "status"], {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        HOME: tempDir,
+        OPENAI_AUTH_TOKEN: "",
+        OPENAI_API_KEY: "sk-test-123",
+        OPENAI_ORG_ID: "org_123",
+        OPENAI_PROJECT_ID: "proj_456",
+      },
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /provider: openai-api/i);
+    assert.match(result.stdout, /api-key-env/i);
+    assert.match(result.stdout, /org_123/);
+    assert.match(result.stdout, /proj_456/);
+    assert.doesNotMatch(result.stdout, /sk-test-123/);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("built unclecode cli reports env OAuth token as oauth-env source", () => {
@@ -121,6 +131,8 @@ test("built unclecode cli reports refresh-needed auth-file state honestly", () =
         encoding: "utf8",
         env: {
           ...process.env,
+          HOME: tempDir,
+          OPENAI_AUTH_TOKEN: "",
           UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialPath,
         },
       },
@@ -136,6 +148,8 @@ test("built unclecode cli reports refresh-needed auth-file state honestly", () =
       encoding: "utf8",
       env: {
         ...process.env,
+        HOME: tempDir,
+        OPENAI_AUTH_TOKEN: "",
         UNCLECODE_SESSION_STORE_ROOT: path.join(tempDir, ".state"),
         UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialPath,
       },
@@ -174,6 +188,8 @@ test("built unclecode cli reports api-key-file status from stored credentials", 
         encoding: "utf8",
         env: {
           ...process.env,
+          HOME: tempDir,
+          OPENAI_AUTH_TOKEN: "",
           UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialPath,
         },
       },
@@ -189,7 +205,7 @@ test("built unclecode cli reports api-key-file status from stored credentials", 
   }
 });
 
-test("built unclecode cli can reuse Codex auth.json as oauth-file auth", () => {
+test("built unclecode cli can reuse Codex auth.json as OpenAI Codex oauth-file auth", () => {
   const tempDir = mkdtempSync(
     path.join(tmpdir(), "unclecode-auth-status-codex-"),
   );
@@ -228,6 +244,7 @@ test("built unclecode cli can reuse Codex auth.json as oauth-file auth", () => {
     );
 
     assert.equal(statusResult.status, 0, statusResult.stderr);
+    assert.match(statusResult.stdout, /provider: openai-codex/);
     assert.match(statusResult.stdout, /source: oauth-file/);
     assert.match(statusResult.stdout, /auth: oauth/);
     assert.match(statusResult.stdout, /expired: no/);

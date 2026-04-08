@@ -244,6 +244,7 @@ test("built unclecode cli auth login reports existing Codex oauth when client id
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /^Saved auth found\.$/m);
+    assert.match(result.stdout, /^Provider: OpenAI Codex$/m);
     assert.match(result.stdout, /^Auth: oauth-file$/m);
     assert.match(
       result.stdout,
@@ -315,7 +316,7 @@ test("built unclecode cli auth login --device can derive client id from codex au
   const tempDir = mkdtempSync(
     path.join(tmpdir(), "unclecode-device-login-codex-"),
   );
-  const credentialsPath = path.join(tempDir, "openai.json");
+  const credentialsPath = path.join(tempDir, "openai-codex.json");
   const codexDir = path.join(tempDir, ".codex");
   const header = Buffer.from(
     JSON.stringify({ alg: "none", typ: "JWT" }),
@@ -415,7 +416,7 @@ test("built unclecode cli auth login --device can derive client id from codex au
             HOME: tempDir,
             OPENAI_OAUTH_CLIENT_ID: "",
             OPENAI_OAUTH_BASE_URL: baseUrl,
-            UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
+            UNCLECODE_OPENAI_CODEX_CREDENTIALS_PATH: credentialsPath,
           },
           stdio: ["ignore", "pipe", "pipe"],
         },
@@ -435,6 +436,7 @@ test("built unclecode cli auth login --device can derive client id from codex au
 
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /user_123/);
+    assert.match(result.stdout, /OpenAI Codex/i);
     const saved = JSON.parse(readFileSync(credentialsPath, "utf8"));
     assert.equal(saved.refreshToken, "rt_123");
   } finally {
@@ -530,6 +532,8 @@ test("built unclecode cli auth logout clears stored credentials", () => {
       encoding: "utf8",
       env: {
         ...process.env,
+        HOME: tempDir,
+        OPENAI_AUTH_TOKEN: "",
         UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
       },
     });
@@ -545,6 +549,8 @@ test("built unclecode cli auth logout clears stored credentials", () => {
         encoding: "utf8",
         env: {
           ...process.env,
+          HOME: tempDir,
+          OPENAI_AUTH_TOKEN: "",
           UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
         },
       },
@@ -579,6 +585,8 @@ test("built unclecode cli auth logout reports remaining env auth honestly", () =
       encoding: "utf8",
       env: {
         ...process.env,
+        HOME: tempDir,
+        OPENAI_AUTH_TOKEN: "",
         OPENAI_API_KEY: "sk-env-456",
         UNCLECODE_OPENAI_CREDENTIALS_PATH: credentialsPath,
       },

@@ -5,9 +5,9 @@ import {
 } from "@unclecode/mcp-host";
 import { loadExtensionConfigOverlays } from "@unclecode/orchestrator/extension-registry";
 import {
-  formatOpenAIAuthStatus,
-  resolveOpenAIAuthStatus,
-} from "@unclecode/providers/openai-status";
+  formatEffectiveOpenAIAuthStatus,
+  resolveEffectiveOpenAIAuthStatus,
+} from "@unclecode/providers";
 import { createRuntimeBroker } from "@unclecode/runtime-broker";
 import { createSessionStore } from "@unclecode/session-store";
 import { mkdir } from "node:fs/promises";
@@ -80,7 +80,7 @@ export async function buildFastDoctorReportData(input: {
   const configMs = elapsedSince(configStartedAt);
 
   const authStartedAt = Date.now();
-  const authStatus = await resolveOpenAIAuthStatus({ env: input.env });
+  const authStatus = await resolveEffectiveOpenAIAuthStatus({ env: input.env });
   const authMs = elapsedSince(authStartedAt);
 
   const runtimeStartedAt = Date.now();
@@ -180,5 +180,5 @@ export async function buildFastDoctorReport(input: {
 }
 
 export async function buildFastAuthStatusReport(env: NodeJS.ProcessEnv): Promise<string> {
-  return formatOpenAIAuthStatus(await resolveOpenAIAuthStatus({ env }));
+  return formatEffectiveOpenAIAuthStatus(await resolveEffectiveOpenAIAuthStatus({ env }));
 }

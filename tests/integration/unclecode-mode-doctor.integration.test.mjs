@@ -65,6 +65,8 @@ test("built unclecode cli doctor reports subsystem readiness", () => {
       encoding: "utf8",
       env: {
         ...process.env,
+        HOME: cwd,
+        OPENAI_AUTH_TOKEN: "",
         OPENAI_API_KEY: "sk-test-123",
         UNCLECODE_SESSION_STORE_ROOT: sessionStoreRoot,
       },
@@ -95,6 +97,8 @@ test("built unclecode cli doctor --verbose prints latency counters", () => {
         encoding: "utf8",
         env: {
           ...process.env,
+          HOME: cwd,
+          OPENAI_AUTH_TOKEN: "",
           OPENAI_API_KEY: "sk-test-123",
           UNCLECODE_SESSION_STORE_ROOT: sessionStoreRoot,
         },

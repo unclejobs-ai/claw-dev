@@ -32,20 +32,23 @@ export function getOpenAIReasoningSupport(modelId: string): ReasoningSupport {
 }
 
 export function getReasoningSupport(providerId: ProviderId, modelId: string): ReasoningSupport {
-  if (providerId === "openai") {
+  if (providerId === "openai-api" || providerId === "openai-codex") {
     return getOpenAIReasoningSupport(modelId);
   }
 
   return UNSUPPORTED_REASONING;
 }
 
-export function getOpenAIModelRegistry(env: NodeJS.ProcessEnv = process.env): ModelRegistry {
+export function getOpenAIModelRegistry(
+  env: NodeJS.ProcessEnv = process.env,
+  providerId: Extract<ProviderId, "openai-api" | "openai-codex"> = "openai-api",
+): ModelRegistry {
   const activeModel = String(env.OPENAI_MODEL ?? "").trim();
   const models = unique([activeModel, ...OPENAI_DEFAULT_MODELS]);
 
   return {
-    providerId: "openai",
-    defaultModel: PROVIDER_CAPABILITIES.openai.defaultModel,
+    providerId,
+    defaultModel: PROVIDER_CAPABILITIES[providerId].defaultModel,
     models,
     reasoningByModel: Object.fromEntries(
       models.map((modelId) => [modelId, getOpenAIReasoningSupport(modelId)]),
@@ -67,7 +70,7 @@ export function assertProviderCapability(
         ? provider.supportsSessionMemory
         : capability === "prompt-caching"
           ? provider.supportsPromptCaching
-          : providerId === "openai";
+          : providerId === "openai-api" || providerId === "openai-codex";
 
   if (!supported) {
     throw new ProviderCapabilityMismatchError({

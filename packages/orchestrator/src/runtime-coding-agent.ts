@@ -60,7 +60,7 @@ export class RuntimeCodingAgent
       toolRuntime,
     });
     super({
-      providerName: args.provider,
+      providerName: args.provider === "openai" ? "openai-api" : args.provider,
       model: args.model,
       provider: runtimeProvider,
     });
