@@ -10,6 +10,7 @@ import {
   resolvePromptSlashCommand,
   resolveWorkShellBuiltinCommand,
 } from "./work-shell-engine-commands.js";
+import * as WorkShellPostTurns from "./work-shell-engine-post-turns.js";
 import * as WorkShellTurns from "./work-shell-engine-turns.js";
 import {
   appendWorkShellEntries,
@@ -807,67 +808,35 @@ export class WorkShellEngine<
       const assistantText = await this.finalizeAssistantReply(input.prompt, result.text || "(empty response)");
       this.appendEntries({ role: "assistant", text: assistantText });
 
-      const bridgeSummary = WorkShellTurns.createConversationTurnSummary({
+      const postTurnEffects = await WorkShellPostTurns.runWorkShellPostTurnSuccessEffects({
+        cwd: this.options.cwd,
         transcriptText: input.transcriptText,
         assistantText,
-      });
-      const bridge = await this.publishContextBridge({
-        cwd: this.options.cwd,
-        summary: bridgeSummary,
-        source: "work-shell",
-        target: "project-context",
-        kind: "summary",
-      });
-      const bridgeTrace = this.formatAgentTraceLine({
-        type: "bridge.published",
-        level: "high-signal",
-        bridgeId: bridge.bridgeId,
-        scope: "project",
-        kind: "summary",
-        summary: bridgeSummary,
-        source: "work-shell",
-        target: "project-context",
-      });
-      this.setState({ bridgeLines: [bridge.line, ...this.state.bridgeLines].slice(0, 6) });
-      this.pushTraceLine(bridgeTrace);
-
-      const memorySummary = WorkShellTurns.createConversationTurnSummary({
-        transcriptText: input.transcriptText,
-        assistantText,
-      });
-      const memoryResult = await this.writeScopedMemory({
-        scope: "session",
-        cwd: this.options.cwd,
-        summary: memorySummary,
         sessionId: this.sessionId,
-        agentId: "work-shell",
+        currentBridgeLines: this.state.bridgeLines,
+        publishContextBridge: this.publishContextBridge,
+        writeScopedMemory: this.writeScopedMemory,
+        listScopedMemoryLines: this.listScopedMemoryLines,
       });
-      const memoryTrace = this.formatAgentTraceLine({
-        type: "memory.written",
-        level: "high-signal",
-        memoryId: memoryResult.memoryId,
-        scope: "session",
-        summary: memorySummary,
+      this.setState({
+        bridgeLines: postTurnEffects.bridgeLines,
+        memoryLines: postTurnEffects.memoryLines,
       });
-      this.pushTraceLine(memoryTrace);
-      const nextSessionMemoryLines = await this.listScopedMemoryLines({ scope: "session", cwd: this.options.cwd, sessionId: this.sessionId });
-      this.setState({ memoryLines: nextSessionMemoryLines });
+      this.pushTraceLine(this.formatAgentTraceLine(postTurnEffects.bridgeTraceEvent));
+      this.pushTraceLine(this.formatAgentTraceLine(postTurnEffects.memoryTraceEvent));
+
 
       this.setState({ lastTurnDurationMs });
       await this.persistSessionSnapshot("idle", input.sessionSummary).catch(() => undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const isAuthFailure = /request failed with status 401/i.test(message);
-      let nextAuthLabel = this.state.authLabel;
-      if (isAuthFailure && this.refreshAuthState) {
-        try {
-          const refreshed = await this.refreshAuthState();
-          nextAuthLabel = refreshed.authLabel;
-          this.applyAuthIssueLines(refreshed.authIssueLines);
-        } catch {
-          nextAuthLabel = this.state.authLabel;
-        }
-      }
+      const isAuthFailure = WorkShellPostTurns.isWorkShellAuthFailure(message);
+      const nextAuthLabel = await WorkShellPostTurns.resolveWorkShellFailureAuthLabel({
+        message,
+        currentAuthLabel: this.state.authLabel,
+        refreshAuthState: this.refreshAuthState,
+        applyAuthIssueLines: (authIssueLines) => this.applyAuthIssueLines(authIssueLines),
+      });
       this.appendEntries({ role: "system", text: this.formatWorkShellError(message) });
       this.setState({
         ...createWorkShellAuthStatePatch({

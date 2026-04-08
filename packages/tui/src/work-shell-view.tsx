@@ -393,7 +393,7 @@ export function WorkShellView(props: {
   readonly terminalColumns?: number;
 }) {
   const composerHint = props.composerHintOverride ?? getWorkShellComposerHint(props.inputValue, props.slashSuggestionCount);
-  const [busyFrame, setBusyFrame] = React.useState(0);
+  const [nowMs, setNowMs] = React.useState(() => Date.now());
   const statusLine = formatWorkShellStatusLine({
     model: props.model,
     reasoningLabel: props.reasoningLabel,
@@ -405,26 +405,24 @@ export function WorkShellView(props: {
     ...(props.busyStatus ? { busyStatus: props.busyStatus } : {}),
     ...(props.currentTurnStartedAt !== undefined ? { currentTurnStartedAt: props.currentTurnStartedAt } : {}),
     ...(props.lastTurnDurationMs !== undefined ? { lastTurnDurationMs: props.lastTurnDurationMs } : {}),
+    nowMs,
   });
 
   React.useEffect(() => {
     if (!props.isBusy) {
-      setBusyFrame(0);
+      setNowMs(Date.now());
       return;
     }
 
+    setNowMs(Date.now());
     const interval = setInterval(() => {
-      setBusyFrame((current) => current + 1);
-    }, 160);
+      setNowMs(Date.now());
+    }, 1000);
 
     return () => {
       clearInterval(interval);
     };
-  }, [props.isBusy]);
-
-  const busyLine = props.isBusy
-    ? formatWorkShellBusyStatusLine(props.busyStatus, busyFrame)
-    : undefined;
+  }, [props.isBusy, props.currentTurnStartedAt]);
 
   const panelBorderColor = getWorkShellPanelBorderColor(props.inputValue, props.activePanel.title);
   const panelDisplayMode = getWorkShellPanelDisplayMode({
@@ -510,7 +508,6 @@ export function WorkShellView(props: {
         {props.composer}
       </Box>
       <Box minHeight={getWorkShellComposerHintMinHeight()} flexDirection="column">
-        {props.isBusy && busyLine ? <Text color="cyan">{busyLine}</Text> : null}
         <Text color="gray">{composerHint ?? " "}</Text>
       </Box>
       {props.attachmentLines && props.attachmentLines.length > 0 && getWorkShellAttachmentPlacement() === "after-composer" ? (

@@ -17,6 +17,11 @@ import {
   resolveWorkShellBuiltinCommand,
 } from "../../packages/orchestrator/src/work-shell-engine-commands.ts";
 import {
+  isWorkShellAuthFailure,
+  resolveWorkShellFailureAuthLabel,
+  runWorkShellPostTurnSuccessEffects,
+} from "../../packages/orchestrator/src/work-shell-engine-post-turns.ts";
+import {
   buildPermissionStallContinuePrompt,
   createChatPromptTurnInput,
   createConversationTurnSummary,
@@ -309,6 +314,44 @@ test("work-shell turn helpers build summaries and permission-stall continuations
     buildPermissionStallContinuePrompt("finish cleanup", "Done."),
     /Continue automatically without asking for permission/,
   );
+});
+
+test("work-shell post-turn helpers persist summaries and auth recovery deterministically", async () => {
+  const refreshedAuthIssues = [];
+  const effects = await runWorkShellPostTurnSuccessEffects({
+    cwd: "/repo",
+    transcriptText: "hello",
+    assistantText: "world",
+    sessionId: "work-1",
+    currentBridgeLines: ["bridge-0"],
+    async publishContextBridge() {
+      return { bridgeId: "bridge-1", line: "bridge-1 line" };
+    },
+    async writeScopedMemory() {
+      return { memoryId: "memory-1" };
+    },
+    async listScopedMemoryLines() {
+      return ["memory-1 line"];
+    },
+  });
+  const authLabel = await resolveWorkShellFailureAuthLabel({
+    message: "request failed with status 401",
+    currentAuthLabel: "oauth-file",
+    async refreshAuthState() {
+      return { authLabel: "api-key-file", authIssueLines: ["Auth issue: saved OAuth needs refresh."] };
+    },
+    applyAuthIssueLines(lines) {
+      refreshedAuthIssues.push(...(lines ?? []));
+    },
+  });
+
+  assert.equal(isWorkShellAuthFailure("request failed with status 401"), true);
+  assert.deepEqual(effects.bridgeLines, ["bridge-1 line", "bridge-0"]);
+  assert.deepEqual(effects.memoryLines, ["memory-1 line"]);
+  assert.equal(effects.bridgeTraceEvent.type, "bridge.published");
+  assert.equal(effects.memoryTraceEvent.type, "memory.written");
+  assert.equal(authLabel, "api-key-file");
+  assert.deepEqual(refreshedAuthIssues, ["Auth issue: saved OAuth needs refresh."]);
 });
 
 test("createInitialWorkShellEngineState derives the shell defaults from options", () => {
