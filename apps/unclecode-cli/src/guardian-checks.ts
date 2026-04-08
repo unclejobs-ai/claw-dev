@@ -272,9 +272,10 @@ function resolveTargetedTestScripts(
 
   const targeted: string[] = [];
   for (const file of normalized) {
-    const script = resolveTargetedTestScriptForFile(file);
-    if (script && availableScripts.has(script) && !targeted.includes(script)) {
-      targeted.push(script);
+    for (const script of resolveTargetedTestScriptsForFile(file)) {
+      if (availableScripts.has(script) && !targeted.includes(script)) {
+        targeted.push(script);
+      }
     }
   }
 
@@ -285,35 +286,44 @@ function resolveTargetedTestScripts(
   return availableScripts.has("test") ? ["test"] : [];
 }
 
-function resolveTargetedTestScriptForFile(file: string): string | undefined {
+function resolveTargetedTestScriptsForFile(file: string): readonly string[] {
+  const scripts: string[] = [];
+
   if (/(^|\/)(tests\/providers|packages\/providers\/)/.test(file)) {
-    return "test:providers";
+    scripts.push("test:providers");
   }
   if (/(^|\/)(tests\/context-broker|packages\/context-broker\/)/.test(file)) {
-    return "test:context-broker";
+    scripts.push("test:context-broker");
   }
   if (/(^|\/)(tests\/runtime-broker|packages\/runtime-broker\/)/.test(file)) {
-    return "test:runtime-broker";
+    scripts.push("test:runtime-broker");
   }
   if (/(^|\/)(tests\/contracts|packages\/contracts\/|packages\/config-core\/)/.test(file)) {
-    return "test:contracts";
+    scripts.push("test:contracts");
+  }
+  if (/(^|\/)packages\/contracts\/src\/tui\.ts$/.test(file)) {
+    scripts.push("test:tui");
   }
   if (/(^|\/)(tests\/performance)/.test(file)) {
-    return "test:performance";
+    scripts.push("test:performance");
   }
   if (/(^|\/)(tests\/orchestrator|packages\/orchestrator\/)/.test(file)) {
-    return "test:orchestrator";
+    scripts.push("test:orchestrator");
   }
   if (/(^|\/)(tests\/tui|packages\/tui\/)/.test(file)) {
-    return "test:tui";
+    scripts.push("test:tui");
   }
-  if (/(^|\/)(tests\/commands|apps\/unclecode-cli\/src\/(command-router|program|interactive-shell|fast-cli|fast-sessions|startup-paths|operational)\.ts)/.test(file)) {
-    return "test:commands";
+  if (/(^|\/)(tests\/commands|apps\/unclecode-cli\/src\/(command-router|program|interactive-shell|interactive-launch-inputs|session-center-launcher|work-bootstrap|fast-cli|fast-sessions|startup-paths|operational)\.ts)/.test(file)) {
+    scripts.push("test:commands");
   }
   if (/(^|\/)(tests\/work|apps\/unclecode-cli\/src\/(work-runtime|guardian-checks|runtime-coding-agent)\.ts|src\/)/.test(file)) {
-    return "test:work";
+    scripts.push("test:work");
   }
-  return undefined;
+  if (/(^|\/)(packages\/tui\/|packages\/orchestrator\/src\/index\.ts|packages\/context-broker\/src\/index\.ts|packages\/providers\/src\/index\.ts|packages\/session-store\/src\/index\.ts|apps\/unclecode-cli\/src\/(interactive-shell|interactive-launch-inputs|session-center-launcher|work-bootstrap|work-entry|work-runtime)\.ts|bin\/unclecode\.cjs|tsconfig\.work\.json)/.test(file)) {
+    scripts.push("test:contracts");
+  }
+
+  return scripts;
 }
 
 async function loadPackageScripts(packageJsonPath: string, readFile: ReadFileLike): Promise<Set<string>> {

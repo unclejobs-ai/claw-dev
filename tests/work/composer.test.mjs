@@ -4,7 +4,7 @@ import test from "node:test";
 import {
   sanitizeComposerInput,
   shouldTreatComposerChangeAsPaste,
-} from "../../src/composer.tsx";
+} from "@unclecode/tui";
 
 test("shouldTreatComposerChangeAsPaste detects large pasted text deltas", () => {
   assert.equal(shouldTreatComposerChangeAsPaste("hello", "hello world"), false);

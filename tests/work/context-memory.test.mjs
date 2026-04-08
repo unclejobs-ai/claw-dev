@@ -9,7 +9,7 @@ import {
   listScopedMemoryLines,
   publishContextBridge,
   writeScopedMemory,
-} from "../../src/context-memory.ts";
+} from "@unclecode/context-broker";
 
 test("publishContextBridge writes project bridge summaries for later reuse", async () => {
   const cwd = mkdtempSync(path.join(tmpdir(), "unclecode-bridge-"));

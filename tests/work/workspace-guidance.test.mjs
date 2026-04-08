@@ -5,11 +5,11 @@ import path from "node:path";
 import test from "node:test";
 
 import {
-  clearWorkspaceGuidanceCache,
-  loadWorkspaceGuidance,
-} from "../../src/workspace-guidance.ts";
+  clearCachedWorkspaceGuidance,
+  loadCachedWorkspaceGuidance,
+} from "@unclecode/context-broker";
 
-test("src/workspace-guidance shim loads AGENTS.md, CLAUDE.md, and workspace skills into runtime context", async () => {
+test("workspace guidance package seam loads AGENTS.md, CLAUDE.md, and workspace skills into runtime context", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "unclecode-guidance-"));
   const nested = path.join(root, "apps", "demo");
   mkdirSync(path.join(nested, ".codex", "skills", "autopilot"), { recursive: true });
@@ -17,7 +17,7 @@ test("src/workspace-guidance shim loads AGENTS.md, CLAUDE.md, and workspace skil
   writeFileSync(path.join(nested, "CLAUDE.md"), "# Claude\nUse slash commands for operator surfaces.\n", "utf8");
   writeFileSync(path.join(nested, ".codex", "skills", "autopilot", "SKILL.md"), "# Autopilot\nKeep moving without waiting for approval.\n", "utf8");
 
-  const guidance = await loadWorkspaceGuidance(nested);
+  const guidance = await loadCachedWorkspaceGuidance({ cwd: nested, userHomeDir: root });
 
   assert.match(guidance.systemPromptAppendix, /Prefer read before edit/);
   assert.match(guidance.systemPromptAppendix, /Use slash commands/);
@@ -28,20 +28,20 @@ test("src/workspace-guidance shim loads AGENTS.md, CLAUDE.md, and workspace skil
   assert.equal(guidance.sources.length, 3);
 });
 
-test("clearWorkspaceGuidanceCache lets /reload pick up changed guidance", async () => {
+test("clearCachedWorkspaceGuidance lets /reload pick up changed guidance", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "unclecode-guidance-cache-"));
   const nested = path.join(root, "apps", "demo");
   mkdirSync(nested, { recursive: true });
   writeFileSync(path.join(root, "AGENTS.md"), "# Agents\nPrefer read before edit.\n", "utf8");
 
-  const first = await loadWorkspaceGuidance(nested);
+  const first = await loadCachedWorkspaceGuidance({ cwd: nested, userHomeDir: root });
   writeFileSync(path.join(root, "AGENTS.md"), "# Agents\nPrefer tests first.\n", "utf8");
 
-  const cached = await loadWorkspaceGuidance(nested);
+  const cached = await loadCachedWorkspaceGuidance({ cwd: nested, userHomeDir: root });
   assert.match(first.systemPromptAppendix, /Prefer read before edit/);
   assert.match(cached.systemPromptAppendix, /Prefer read before edit/);
 
-  clearWorkspaceGuidanceCache(nested);
-  const refreshed = await loadWorkspaceGuidance(nested);
+  clearCachedWorkspaceGuidance(nested, root);
+  const refreshed = await loadCachedWorkspaceGuidance({ cwd: nested, userHomeDir: root });
   assert.match(refreshed.systemPromptAppendix, /Prefer tests first/);
 });

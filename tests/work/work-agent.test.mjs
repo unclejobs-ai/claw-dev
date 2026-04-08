@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { WorkAgent } from "../../src/work-agent.ts";
+import { WorkAgent } from "@unclecode/orchestrator";
 
 const supportedReasoning = {
   effort: "medium",

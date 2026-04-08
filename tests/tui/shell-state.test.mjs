@@ -245,6 +245,62 @@ test("reduceShellEvent can merge refreshed home state without dropping work acti
   assert.deepEqual(next.homeState.memoryLines, ["Memory refreshed"]);
 });
 
+test("reduceShellEvent can retarget session focus when refreshed home state selects a new session", () => {
+  const initial = createInitialShellState(
+    {
+      ...baseHomeState,
+      sessions: [
+        {
+          sessionId: "work-1",
+          state: "idle",
+          updatedAt: "2026-04-02T10:00:00.000Z",
+          model: "gpt-5.4",
+          taskSummary: "Existing work",
+        },
+        {
+          sessionId: "work-2",
+          state: "idle",
+          updatedAt: "2026-04-02T12:00:00.000Z",
+          model: "gpt-5.4",
+          taskSummary: "New work",
+        },
+      ],
+      sessionCount: 2,
+    },
+    {
+      initialView: "sessions",
+      selectedSessionId: "work-1",
+    },
+  );
+
+  const next = reduceShellEvent(initial, {
+    type: "home.updated",
+    selectedSessionId: "work-2",
+    homeState: {
+      sessions: [
+        {
+          sessionId: "work-1",
+          state: "idle",
+          updatedAt: "2026-04-02T10:00:00.000Z",
+          model: "gpt-5.4",
+          taskSummary: "Existing work",
+        },
+        {
+          sessionId: "work-2",
+          state: "idle",
+          updatedAt: "2026-04-02T12:01:00.000Z",
+          model: "gpt-5.4",
+          taskSummary: "New work",
+        },
+      ],
+    },
+  });
+
+  assert.equal(next.focus.column, "sessions");
+  assert.equal(next.focus.sessionIndex, 1);
+  assert.equal(next.homeState.sessions[1]?.sessionId, "work-2");
+});
+
 test("reduceShellEvent tracks worker progress while an action is running", () => {
   const initial = createInitialShellState(baseHomeState);
 

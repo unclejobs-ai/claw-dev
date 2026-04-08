@@ -136,7 +136,11 @@ export type WorkShellEngineInput<
   resolveWorkShellSlashCommand: (input: string) => readonly string[] | undefined;
   resolveWorkShellInlineCommand: (
     args: readonly string[],
-    runInlineCommand: (args: readonly string[]) => Promise<readonly string[]>,
+    runInlineCommand: (
+      args: readonly string[],
+      onProgress?: ((line: string) => void) | undefined,
+    ) => Promise<readonly string[]>,
+    onProgress?: ((line: string) => void) | undefined,
   ) => Promise<{ readonly lines: readonly string[]; readonly failed: boolean }>;
   refineInlineCommandResultLines?: (input: {
     args: readonly string[];
@@ -231,7 +235,11 @@ export class WorkShellEngine<
   private readonly resolveWorkShellSlashCommand: (input: string) => readonly string[] | undefined;
   private readonly resolveWorkShellInlineCommand: (
     args: readonly string[],
-    runInlineCommand: (args: readonly string[]) => Promise<readonly string[]>,
+    runInlineCommand: (
+      args: readonly string[],
+      onProgress?: ((line: string) => void) | undefined,
+    ) => Promise<readonly string[]>,
+    onProgress?: ((line: string) => void) | undefined,
   ) => Promise<{ readonly lines: readonly string[]; readonly failed: boolean }>;
   private readonly refineInlineCommandResultLines?: ((input: {
     args: readonly string[];
@@ -240,7 +248,10 @@ export class WorkShellEngine<
     authLabel: string;
   }) => readonly string[]) | undefined;
   private readonly refreshAuthState?: (() => Promise<{ authLabel: string; authIssueLines?: readonly string[] }>) | undefined;
-  private readonly runInlineCommand?: ((args: readonly string[]) => Promise<readonly string[]>) | undefined;
+  private readonly runInlineCommand?: ((
+    args: readonly string[],
+    onProgress?: ((line: string) => void) | undefined,
+  ) => Promise<readonly string[]>) | undefined;
   private readonly saveApiKeyAuth?: ((raw: string) => Promise<readonly string[]>) | undefined;
   private readonly resolveComposerInput: (value: string, cwd: string) => Promise<WorkShellComposerResolution<Attachment>>;
   private readonly publishContextBridge: (input: {
@@ -684,7 +695,41 @@ export class WorkShellEngine<
       });
 
       try {
-        const commandResult = await this.resolveWorkShellInlineCommand(slashCommand, this.runInlineCommand);
+        const authProgressLines: string[] = [];
+        const buildAuthProgressPanelLines = (): readonly string[] => {
+          const normalizedLines = authProgressLines
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0);
+          if (normalizedLines.length === 0) {
+            return ["Starting OAuth…", "Check the browser window."];
+          }
+
+          const latestCodeLine = [...normalizedLines].reverse().find((line) => line.startsWith("Enter code:"));
+          const latestStatusLine = normalizedLines.at(-1);
+          const historyLines = normalizedLines.filter((line) => line !== latestCodeLine && line !== latestStatusLine);
+
+          return [
+            ...(latestCodeLine ? [latestCodeLine] : []),
+            ...(latestStatusLine && latestStatusLine !== latestCodeLine ? [latestStatusLine] : []),
+            ...historyLines,
+            ...(latestCodeLine ? [] : latestStatusLine ? [] : ["Check the browser window."]),
+          ];
+        };
+        const commandResult = await this.resolveWorkShellInlineCommand(
+          slashCommand,
+          this.runInlineCommand,
+          isAuthLogin
+            ? (line) => {
+                authProgressLines.push(line);
+                this.setState({
+                  panel: {
+                    title: "Auth",
+                    lines: buildAuthProgressPanelLines(),
+                  },
+                });
+              }
+            : undefined,
+        );
         const resultLines = this.refineInlineCommandResultLines
           ? this.refineInlineCommandResultLines({
               args: slashCommand,

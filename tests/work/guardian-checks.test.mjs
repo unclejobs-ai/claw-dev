@@ -256,3 +256,128 @@ test("runWorkspaceGuardianChecks maps work, orchestrator, tui, and command surfa
   assert.equal(result.checks[3]?.name, "test:tui");
   assert.equal(result.checks[4]?.name, "test:commands");
 });
+
+test("runWorkspaceGuardianChecks adds contract coverage for public shell and package boundary changes", async () => {
+  const execCalls = [];
+  const result = await runWorkspaceGuardianChecks(
+    {
+      cwd: "/repo",
+      env: {},
+      scripts: ["check", "test"],
+      changedFiles: [
+        "apps/unclecode-cli/src/session-center-launcher.ts",
+        "apps/unclecode-cli/src/interactive-launch-inputs.ts",
+        "apps/unclecode-cli/src/work-bootstrap.ts",
+        "packages/tui/src/index.tsx",
+        "packages/orchestrator/src/index.ts",
+        "packages/context-broker/src/index.ts",
+      ],
+    },
+    {
+      readFile: async () =>
+        JSON.stringify({
+          scripts: {
+            check: "tsc -p tsconfig.check.json --noEmit",
+            "test:commands": "node --conditions=source --import tsx --test tests/commands/*.test.mjs",
+            "test:tui": "node --conditions=source --import tsx --test tests/tui/*.test.mjs",
+            "test:orchestrator": "node --conditions=source --import tsx --test tests/orchestrator/*.test.mjs",
+            "test:context-broker": "node --conditions=source --import tsx --test tests/context-broker/*.test.mjs",
+            "test:contracts": "node --conditions=source --import tsx --test tests/contracts/*.test.mjs tests/contracts/*.test.ts",
+          },
+        }),
+      execFile: async (command, args) => {
+        execCalls.push([command, args]);
+        return { stdout: "", stderr: "" };
+      },
+      platform: "darwin",
+    },
+  );
+
+  assert.deepEqual(execCalls, [
+    ["npm", ["run", "check", "--silent"]],
+    ["npm", ["run", "test:commands", "--silent"]],
+    ["npm", ["run", "test:contracts", "--silent"]],
+    ["npm", ["run", "test:tui", "--silent"]],
+    ["npm", ["run", "test:orchestrator", "--silent"]],
+    ["npm", ["run", "test:context-broker", "--silent"]],
+  ]);
+  assert.equal(result.checks.length, 6);
+  assert.equal(result.checks[1]?.name, "test:commands");
+  assert.equal(result.checks[2]?.name, "test:contracts");
+  assert.equal(result.checks[3]?.name, "test:tui");
+  assert.equal(result.checks[4]?.name, "test:orchestrator");
+  assert.equal(result.checks[5]?.name, "test:context-broker");
+});
+
+
+test("runWorkspaceGuardianChecks treats the public TUI index seam as both tui and contract impact", async () => {
+  const execCalls = [];
+  const result = await runWorkspaceGuardianChecks(
+    {
+      cwd: "/repo",
+      env: {},
+      scripts: ["check", "test"],
+      changedFiles: ["packages/tui/src/index.tsx"],
+    },
+    {
+      readFile: async () =>
+        JSON.stringify({
+          scripts: {
+            check: "tsc -p tsconfig.check.json --noEmit",
+            "test:tui": "node --conditions=source --import tsx --test tests/tui/*.test.mjs",
+            "test:contracts": "node --conditions=source --import tsx --test tests/contracts/*.test.mjs tests/contracts/*.test.ts",
+          },
+        }),
+      execFile: async (command, args) => {
+        execCalls.push([command, args]);
+        return { stdout: "", stderr: "" };
+      },
+      platform: "darwin",
+    },
+  );
+
+  assert.deepEqual(execCalls, [
+    ["npm", ["run", "check", "--silent"]],
+    ["npm", ["run", "test:tui", "--silent"]],
+    ["npm", ["run", "test:contracts", "--silent"]],
+  ]);
+  assert.equal(result.checks.length, 3);
+  assert.equal(result.checks[1]?.name, "test:tui");
+  assert.equal(result.checks[2]?.name, "test:contracts");
+});
+
+test("runWorkspaceGuardianChecks treats shared tui controller contracts as both contract and tui impact", async () => {
+  const execCalls = [];
+  const result = await runWorkspaceGuardianChecks(
+    {
+      cwd: "/repo",
+      env: {},
+      scripts: ["check", "test"],
+      changedFiles: ["packages/contracts/src/tui.ts"],
+    },
+    {
+      readFile: async () =>
+        JSON.stringify({
+          scripts: {
+            check: "tsc -p tsconfig.check.json --noEmit",
+            "test:tui": "node --conditions=source --import tsx --test tests/tui/*.test.mjs",
+            "test:contracts": "node --conditions=source --import tsx --test tests/contracts/*.test.mjs tests/contracts/*.test.ts",
+          },
+        }),
+      execFile: async (command, args) => {
+        execCalls.push([command, args]);
+        return { stdout: "", stderr: "" };
+      },
+      platform: "darwin",
+    },
+  );
+
+  assert.deepEqual(execCalls, [
+    ["npm", ["run", "check", "--silent"]],
+    ["npm", ["run", "test:contracts", "--silent"]],
+    ["npm", ["run", "test:tui", "--silent"]],
+  ]);
+  assert.equal(result.checks.length, 3);
+  assert.equal(result.checks[1]?.name, "test:contracts");
+  assert.equal(result.checks[2]?.name, "test:tui");
+});

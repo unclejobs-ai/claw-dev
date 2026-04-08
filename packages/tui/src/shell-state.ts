@@ -96,6 +96,7 @@ export type TuiShellEvent =
   | {
       readonly type: "home.updated";
       readonly homeState: Partial<TuiShellHomeState>;
+      readonly selectedSessionId?: string | undefined;
     }
   | { readonly type: "worker.progressed"; readonly worker: TuiWorkerStatus }
   | { readonly type: "approval.requested"; readonly approval: TuiApprovalRequest }
@@ -164,6 +165,18 @@ export function applyShellEvents(state: TuiShellState, events: readonly TuiShell
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function findSessionIndexById(
+  sessions: readonly TuiShellSession[],
+  selectedSessionId: string | undefined,
+): number | undefined {
+  if (!selectedSessionId) {
+    return undefined;
+  }
+
+  const sessionIndex = sessions.findIndex((session) => session.sessionId === selectedSessionId);
+  return sessionIndex >= 0 ? sessionIndex : undefined;
 }
 
 function areHomeStateValuesEqual(left: unknown, right: unknown): boolean {
@@ -265,15 +278,32 @@ export function reduceShellEvent(state: TuiShellState, event: TuiShellEvent): Tu
         const current = state.homeState[key as keyof TuiShellHomeState];
         return !areHomeStateValuesEqual(current, value);
       });
-      if (!hasChanges) {
+      const nextHomeState = {
+        ...state.homeState,
+        ...event.homeState,
+      };
+      const selectedSessionIndex = findSessionIndexById(
+        nextHomeState.sessions,
+        event.selectedSessionId,
+      );
+      const hasFocusChange =
+        selectedSessionIndex !== undefined &&
+        selectedSessionIndex !== state.focus.sessionIndex;
+
+      if (!hasChanges && !hasFocusChange) {
         return state;
       }
       return {
         ...state,
-        homeState: {
-          ...state.homeState,
-          ...event.homeState,
-        },
+        homeState: nextHomeState,
+        ...(hasFocusChange
+          ? {
+              focus: {
+                ...state.focus,
+                sessionIndex: selectedSessionIndex,
+              },
+            }
+          : {}),
       };
     }
     case "worker.progressed": {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { toolHandlers } from "../../src/tools.ts";
+import { toolHandlers } from "@unclecode/orchestrator";
 
 test("run_shell executes a simple command on the current platform", async () => {
   const original = process.env.UNCLECODE_ALLOW_RUN_SHELL;

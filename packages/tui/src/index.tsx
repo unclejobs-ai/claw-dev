@@ -1,4 +1,9 @@
-import { UNCLECODE_COMMAND_NAME } from "@unclecode/contracts";
+import {
+  buildEmbeddedWorkSessionUpdate,
+  parseSelectedSessionIdFromArgs,
+  UNCLECODE_COMMAND_NAME,
+  type OpenEmbeddedWorkSession,
+} from "@unclecode/contracts";
 import {
   createWorkShellPaneRuntime,
   type CreateWorkShellEngineInput,
@@ -233,8 +238,10 @@ export function createEmbeddedWorkShellDashboardProps(input: {
   readonly homeState: TuiShellHomeState;
   readonly contextLines: readonly string[];
   readonly refreshHomeState?: (() => Promise<TuiShellHomeState>) | undefined;
-  readonly renderWorkPane: NonNullable<React.ComponentProps<typeof Dashboard>["renderWorkPane"]>;
-}): React.ComponentProps<typeof Dashboard> {
+  readonly renderWorkPane: NonNullable<
+    TuiRenderOptions<TuiShellHomeState>["renderWorkPane"]
+  >;
+}): TuiRenderOptions<TuiShellHomeState> {
   return {
     workspaceRoot: input.workspaceRoot,
     modeLabel: input.homeState.modeLabel,
@@ -267,7 +274,7 @@ export function createEmbeddedWorkShellPaneDashboardProps<
   readonly buildPane: (input: {
     readonly onExit: () => void;
   }) => EmbeddedWorkShellPaneProps<Attachment, State>;
-}): React.ComponentProps<typeof Dashboard> {
+}): TuiRenderOptions<TuiShellHomeState> {
   return createEmbeddedWorkShellDashboardProps({
     workspaceRoot: input.workspaceRoot,
     homeState: input.homeState,
@@ -309,7 +316,7 @@ export function createManagedWorkShellDashboardProps<
   TraceEvent extends { readonly type: string },
 >(
   input: ManagedWorkShellDashboardInput<Attachment, Reasoning, TraceEvent>,
-): React.ComponentProps<typeof Dashboard> {
+): TuiRenderOptions<TuiShellHomeState> {
   return createEmbeddedWorkShellPaneDashboardProps<
     Attachment,
     WorkShellEngineState<Reasoning>
@@ -346,10 +353,59 @@ export function createManagedWorkShellDashboardProps<
   });
 }
 
+function createDashboardElement(props: TuiRenderOptions<TuiShellHomeState>) {
+  return (
+    <Dashboard
+      workspaceRoot={props.workspaceRoot ?? process.cwd()}
+      {...(props.modeLabel ? { modeLabel: props.modeLabel } : {})}
+      {...(props.authLabel ? { authLabel: props.authLabel } : {})}
+      {...(props.sessionCount !== undefined
+        ? { sessionCount: props.sessionCount }
+        : {})}
+      {...(props.mcpServerCount !== undefined
+        ? { mcpServerCount: props.mcpServerCount }
+        : {})}
+      {...(props.mcpServers ? { mcpServers: props.mcpServers } : {})}
+      {...(props.latestResearchSessionId !== undefined
+        ? { latestResearchSessionId: props.latestResearchSessionId }
+        : {})}
+      {...(props.latestResearchSummary !== undefined
+        ? { latestResearchSummary: props.latestResearchSummary }
+        : {})}
+      {...(props.latestResearchTimestamp !== undefined
+        ? { latestResearchTimestamp: props.latestResearchTimestamp }
+        : {})}
+      {...(props.researchRunCount !== undefined
+        ? { researchRunCount: props.researchRunCount }
+        : {})}
+      {...(props.initialSelectedSessionId
+        ? { initialSelectedSessionId: props.initialSelectedSessionId }
+        : {})}
+      {...(props.sessions ? { sessions: props.sessions } : {})}
+      contextLines={props.contextLines ?? []}
+      bridgeLines={props.bridgeLines ?? []}
+      memoryLines={props.memoryLines ?? []}
+      {...(props.runAction ? { runAction: props.runAction } : {})}
+      {...(props.runSession ? { runSession: props.runSession } : {})}
+      {...(props.launchWorkSession
+        ? { launchWorkSession: props.launchWorkSession }
+        : {})}
+      {...(props.renderWorkPane ? { renderWorkPane: props.renderWorkPane } : {})}
+      {...(props.openEmbeddedWorkSession
+        ? { openEmbeddedWorkSession: props.openEmbeddedWorkSession }
+        : {})}
+      {...(props.initialView ? { initialView: props.initialView } : {})}
+      {...(props.refreshHomeState
+        ? { refreshHomeState: props.refreshHomeState }
+        : {})}
+    />
+  );
+}
+
 export async function renderEmbeddedWorkShellPaneDashboard(
-  props: React.ComponentProps<typeof Dashboard>,
+  props: TuiRenderOptions<TuiShellHomeState>,
 ): Promise<void> {
-  const instance = render(<Dashboard {...props} />);
+  const instance = render(createDashboardElement(props));
   await instance.waitUntilExit();
 }
 
@@ -617,6 +673,24 @@ export function getSessionCenterViewShortcut(input: string): TuiShellState["view
 
 export function shouldRenderEmbeddedWorkPaneFullscreen(view: TuiShellState["view"], hasEmbeddedWorkPane: boolean): boolean {
   return view === "work" && hasEmbeddedWorkPane;
+}
+
+export function resolveWorkPaneNavigationMode(input: {
+  readonly forwardedArgs: readonly string[];
+  readonly hasEmbeddedWorkPane: boolean;
+  readonly hasEmbeddedWorkController: boolean;
+  readonly hasLaunchWorkSession: boolean;
+}): "embedded-view" | "embedded-update" | "launch-handoff" | "unavailable" {
+  if (input.forwardedArgs.length === 0 && input.hasEmbeddedWorkPane) {
+    return "embedded-view";
+  }
+  if (input.hasEmbeddedWorkPane && input.hasEmbeddedWorkController) {
+    return "embedded-update";
+  }
+  if (input.hasLaunchWorkSession) {
+    return "launch-handoff";
+  }
+  return "unavailable";
 }
 
 export function shouldCaptureDashboardInput(view: TuiShellState["view"], hasEmbeddedWorkPane: boolean): boolean {
@@ -991,8 +1065,29 @@ function DetailPanel(props: {
   );
 }
 
-export function Dashboard(props: {
-  readonly workspaceRoot: string;
+export type TuiRenderOptions<
+  HomeState extends {
+    readonly modeLabel: string;
+    readonly authLabel: string;
+    readonly sessionCount: number;
+    readonly mcpServerCount: number;
+    readonly mcpServers: readonly {
+      name: string;
+      transport: string;
+      scope: string;
+      trustTier: string;
+      originLabel: string;
+    }[];
+    readonly latestResearchSessionId: string | null;
+    readonly latestResearchSummary: string | null;
+    readonly latestResearchTimestamp: string | null;
+    readonly researchRunCount: number;
+    readonly sessions: readonly SessionCenterSession[];
+    readonly bridgeLines?: readonly string[];
+    readonly memoryLines?: readonly string[];
+  } = TuiShellHomeState
+> = {
+  readonly workspaceRoot?: string;
   readonly modeLabel?: string;
   readonly authLabel?: string;
   readonly sessionCount?: number;
@@ -1004,24 +1099,385 @@ export function Dashboard(props: {
   readonly researchRunCount?: number;
   readonly initialSelectedSessionId?: string | undefined;
   readonly initialView?: TuiShellState["view"] | undefined;
-  readonly sessions?: readonly SessionCenterSession[];
+  readonly renderWorkPane?: ((controls: {
+    openSessions: () => void;
+    syncHomeState: (homeState: Partial<HomeState>) => void;
+  }) => React.ReactNode) | undefined;
+  readonly sessions?: HomeState["sessions"];
   readonly contextLines?: readonly string[];
   readonly bridgeLines?: readonly string[];
   readonly memoryLines?: readonly string[];
   readonly runAction?: ((input: { actionId: string; prompt?: string; onProgress?: ((line: string) => void) | undefined }) => Promise<readonly string[]>) | undefined;
   readonly runSession?: ((sessionId: string) => Promise<readonly string[]>) | undefined;
   readonly launchWorkSession?: ((forwardedArgs?: readonly string[]) => Promise<void>) | undefined;
-  readonly renderWorkPane?: ((controls: {
-    openSessions: () => void;
-    syncHomeState: (homeState: Partial<TuiShellHomeState>) => void;
-  }) => React.ReactNode) | undefined;
-  readonly refreshHomeState?: (() => Promise<TuiShellHomeState>) | undefined;
-}) {
+  readonly openEmbeddedWorkSession?: OpenEmbeddedWorkSession<HomeState> | undefined;
+  readonly refreshHomeState?: (() => Promise<HomeState>) | undefined;
+};
+
+export type EmbeddedWorkDashboardSnapshot<
+  HomeState extends {
+    readonly modeLabel: string;
+    readonly authLabel: string;
+    readonly sessionCount: number;
+    readonly mcpServerCount: number;
+    readonly mcpServers: readonly {
+      name: string;
+      transport: string;
+      scope: string;
+      trustTier: string;
+      originLabel: string;
+    }[];
+    readonly latestResearchSessionId: string | null;
+    readonly latestResearchSummary: string | null;
+    readonly latestResearchTimestamp: string | null;
+    readonly researchRunCount: number;
+    readonly sessions: readonly SessionCenterSession[];
+    readonly bridgeLines?: readonly string[];
+    readonly memoryLines?: readonly string[];
+  } = TuiShellHomeState,
+> = Pick<
+  TuiRenderOptions<HomeState>,
+  | "modeLabel"
+  | "authLabel"
+  | "sessionCount"
+  | "mcpServerCount"
+  | "mcpServers"
+  | "latestResearchSessionId"
+  | "latestResearchSummary"
+  | "latestResearchTimestamp"
+  | "researchRunCount"
+  | "sessions"
+  | "contextLines"
+  | "bridgeLines"
+  | "memoryLines"
+  | "renderWorkPane"
+>;
+
+export type EmbeddedWorkPaneRenderOptions<
+  HomeState extends {
+    readonly modeLabel: string;
+    readonly authLabel: string;
+    readonly sessionCount: number;
+    readonly mcpServerCount: number;
+    readonly mcpServers: readonly {
+      name: string;
+      transport: string;
+      scope: string;
+      trustTier: string;
+      originLabel: string;
+    }[];
+    readonly latestResearchSessionId: string | null;
+    readonly latestResearchSummary: string | null;
+    readonly latestResearchTimestamp: string | null;
+    readonly researchRunCount: number;
+    readonly sessions: readonly SessionCenterSession[];
+    readonly bridgeLines?: readonly string[];
+    readonly memoryLines?: readonly string[];
+  } = TuiShellHomeState,
+> = EmbeddedWorkDashboardSnapshot<HomeState> & Pick<
+  TuiRenderOptions<HomeState>,
+  "openEmbeddedWorkSession"
+>;
+
+export function extractEmbeddedHomeStatePatch<
+  HomeState extends {
+    readonly modeLabel: string;
+    readonly authLabel: string;
+    readonly sessionCount: number;
+    readonly mcpServerCount: number;
+    readonly mcpServers: readonly {
+      name: string;
+      transport: string;
+      scope: string;
+      trustTier: string;
+      originLabel: string;
+    }[];
+    readonly latestResearchSessionId: string | null;
+    readonly latestResearchSummary: string | null;
+    readonly latestResearchTimestamp: string | null;
+    readonly researchRunCount: number;
+    readonly sessions: readonly SessionCenterSession[];
+    readonly bridgeLines?: readonly string[];
+    readonly memoryLines?: readonly string[];
+  } = TuiShellHomeState,
+>(props: EmbeddedWorkDashboardSnapshot<HomeState>): Partial<HomeState> {
+  return {
+    ...(props.modeLabel !== undefined ? { modeLabel: props.modeLabel } : {}),
+    ...(props.authLabel !== undefined ? { authLabel: props.authLabel } : {}),
+    ...(props.sessionCount !== undefined
+      ? { sessionCount: props.sessionCount }
+      : {}),
+    ...(props.mcpServerCount !== undefined
+      ? { mcpServerCount: props.mcpServerCount }
+      : {}),
+    ...(props.mcpServers !== undefined ? { mcpServers: props.mcpServers } : {}),
+    ...(props.latestResearchSessionId !== undefined
+      ? { latestResearchSessionId: props.latestResearchSessionId }
+      : {}),
+    ...(props.latestResearchSummary !== undefined
+      ? { latestResearchSummary: props.latestResearchSummary }
+      : {}),
+    ...(props.latestResearchTimestamp !== undefined
+      ? { latestResearchTimestamp: props.latestResearchTimestamp }
+      : {}),
+    ...(props.researchRunCount !== undefined
+      ? { researchRunCount: props.researchRunCount }
+      : {}),
+    ...(props.sessions !== undefined ? { sessions: props.sessions } : {}),
+    ...(props.bridgeLines !== undefined ? { bridgeLines: props.bridgeLines } : {}),
+    ...(props.memoryLines !== undefined ? { memoryLines: props.memoryLines } : {}),
+  } as Partial<HomeState>;
+}
+
+export function buildEmbeddedWorkPaneRenderOptions<
+  HomeState extends {
+    readonly modeLabel: string;
+    readonly authLabel: string;
+    readonly sessionCount: number;
+    readonly mcpServerCount: number;
+    readonly mcpServers: readonly {
+      name: string;
+      transport: string;
+      scope: string;
+      trustTier: string;
+      originLabel: string;
+    }[];
+    readonly latestResearchSessionId: string | null;
+    readonly latestResearchSummary: string | null;
+    readonly latestResearchTimestamp: string | null;
+    readonly researchRunCount: number;
+    readonly sessions: readonly SessionCenterSession[];
+    readonly bridgeLines?: readonly string[];
+    readonly memoryLines?: readonly string[];
+  } = TuiShellHomeState,
+>(input: {
+  readonly homeStatePatch: Partial<HomeState>;
+  readonly contextLines?: readonly string[];
+  readonly renderWorkPane: NonNullable<TuiRenderOptions<HomeState>["renderWorkPane"]>;
+  readonly openEmbeddedWorkSession: NonNullable<
+    TuiRenderOptions<HomeState>["openEmbeddedWorkSession"]
+  >;
+}): EmbeddedWorkPaneRenderOptions<HomeState> {
+  return {
+    ...(input.homeStatePatch.modeLabel !== undefined
+      ? { modeLabel: input.homeStatePatch.modeLabel }
+      : {}),
+    ...(input.homeStatePatch.authLabel !== undefined
+      ? { authLabel: input.homeStatePatch.authLabel }
+      : {}),
+    ...(input.homeStatePatch.sessionCount !== undefined
+      ? { sessionCount: input.homeStatePatch.sessionCount }
+      : {}),
+    ...(input.homeStatePatch.mcpServerCount !== undefined
+      ? { mcpServerCount: input.homeStatePatch.mcpServerCount }
+      : {}),
+    ...(input.homeStatePatch.mcpServers !== undefined
+      ? { mcpServers: input.homeStatePatch.mcpServers }
+      : {}),
+    ...(input.homeStatePatch.latestResearchSessionId !== undefined
+      ? { latestResearchSessionId: input.homeStatePatch.latestResearchSessionId }
+      : {}),
+    ...(input.homeStatePatch.latestResearchSummary !== undefined
+      ? { latestResearchSummary: input.homeStatePatch.latestResearchSummary }
+      : {}),
+    ...(input.homeStatePatch.latestResearchTimestamp !== undefined
+      ? { latestResearchTimestamp: input.homeStatePatch.latestResearchTimestamp }
+      : {}),
+    ...(input.homeStatePatch.researchRunCount !== undefined
+      ? { researchRunCount: input.homeStatePatch.researchRunCount }
+      : {}),
+    ...(input.homeStatePatch.sessions !== undefined
+      ? { sessions: input.homeStatePatch.sessions }
+      : {}),
+    ...(input.homeStatePatch.bridgeLines !== undefined
+      ? { bridgeLines: input.homeStatePatch.bridgeLines }
+      : {}),
+    ...(input.homeStatePatch.memoryLines !== undefined
+      ? { memoryLines: input.homeStatePatch.memoryLines }
+      : {}),
+    ...(input.contextLines ? { contextLines: input.contextLines } : {}),
+    renderWorkPane: input.renderWorkPane,
+    openEmbeddedWorkSession: input.openEmbeddedWorkSession,
+  } as EmbeddedWorkPaneRenderOptions<HomeState>;
+}
+
+export async function createEmbeddedWorkPaneController<
+  HomeState extends {
+    readonly modeLabel: string;
+    readonly authLabel: string;
+    readonly sessionCount: number;
+    readonly mcpServerCount: number;
+    readonly mcpServers: readonly {
+      name: string;
+      transport: string;
+      scope: string;
+      trustTier: string;
+      originLabel: string;
+    }[];
+    readonly latestResearchSessionId: string | null;
+    readonly latestResearchSummary: string | null;
+    readonly latestResearchTimestamp: string | null;
+    readonly researchRunCount: number;
+    readonly sessions: readonly SessionCenterSession[];
+    readonly bridgeLines?: readonly string[];
+    readonly memoryLines?: readonly string[];
+  } = TuiShellHomeState,
+>(input: {
+  readonly initialSelectedSessionId?: string;
+  readonly loadSnapshot: (
+    forwardedArgs?: readonly string[],
+  ) => Promise<EmbeddedWorkDashboardSnapshot<HomeState> | undefined>;
+}): Promise<EmbeddedWorkPaneRenderOptions<HomeState> | undefined> {
+  let currentRenderWorkPane:
+    | TuiRenderOptions<HomeState>["renderWorkPane"]
+    | undefined;
+  let currentContextLines: readonly string[] | undefined;
+  let currentHomeStatePatch: Partial<HomeState> | undefined;
+
+  const loadPane = async (forwardedArgs: readonly string[] = []) => {
+    const props = await input.loadSnapshot(forwardedArgs);
+    currentRenderWorkPane = props?.renderWorkPane;
+    currentContextLines = props?.contextLines;
+    currentHomeStatePatch = props
+      ? extractEmbeddedHomeStatePatch(props)
+      : undefined;
+    return props;
+  };
+
+  await loadPane(
+    input.initialSelectedSessionId?.startsWith("work-")
+      ? ["--session-id", input.initialSelectedSessionId]
+      : [],
+  );
+
+  if (!currentRenderWorkPane) {
+    return undefined;
+  }
+
+  const renderWorkPane: NonNullable<TuiRenderOptions<HomeState>["renderWorkPane"]> =
+    (controls) => currentRenderWorkPane?.(controls) ?? null;
+  const openEmbeddedWorkSession: NonNullable<
+    TuiRenderOptions<HomeState>["openEmbeddedWorkSession"]
+  > = async (forwardedArgs = []) => {
+    await loadPane(forwardedArgs);
+    return buildEmbeddedWorkSessionUpdate<HomeState>({
+      forwardedArgs,
+      ...(currentContextLines ? { contextLines: currentContextLines } : {}),
+      ...(currentHomeStatePatch ? { homeState: currentHomeStatePatch } : {}),
+    });
+  };
+
+  return buildEmbeddedWorkPaneRenderOptions<HomeState>({
+    homeStatePatch: currentHomeStatePatch ?? {},
+    ...(currentContextLines ? { contextLines: currentContextLines } : {}),
+    renderWorkPane,
+    openEmbeddedWorkSession,
+  });
+}
+
+export function createSessionCenterDashboardRenderOptions<
+  HomeState extends {
+    readonly modeLabel: string;
+    readonly authLabel: string;
+    readonly sessionCount: number;
+    readonly mcpServerCount: number;
+    readonly mcpServers: readonly {
+      name: string;
+      transport: string;
+      scope: string;
+      trustTier: string;
+      originLabel: string;
+    }[];
+    readonly latestResearchSessionId: string | null;
+    readonly latestResearchSummary: string | null;
+    readonly latestResearchTimestamp: string | null;
+    readonly researchRunCount: number;
+    readonly sessions: readonly SessionCenterSession[];
+    readonly bridgeLines?: readonly string[];
+    readonly memoryLines?: readonly string[];
+  } = TuiShellHomeState,
+>(input: {
+  readonly workspaceRoot: string;
+  readonly homeState: HomeState;
+  readonly embeddedWorkPane?: EmbeddedWorkPaneRenderOptions<HomeState> | undefined;
+  readonly initialSelectedSessionId?: string;
+  readonly contextLines?: readonly string[];
+  readonly runAction?: TuiRenderOptions<HomeState>["runAction"];
+  readonly runSession?: TuiRenderOptions<HomeState>["runSession"];
+  readonly launchWorkSession?: TuiRenderOptions<HomeState>["launchWorkSession"];
+  readonly refreshHomeState?: (() => Promise<HomeState>) | undefined;
+}): TuiRenderOptions<HomeState> {
+  const bridgeLines =
+    input.embeddedWorkPane?.bridgeLines ?? input.homeState.bridgeLines;
+  const memoryLines =
+    input.embeddedWorkPane?.memoryLines ?? input.homeState.memoryLines;
+
+  return {
+    workspaceRoot: input.workspaceRoot,
+    modeLabel: input.embeddedWorkPane?.modeLabel ?? input.homeState.modeLabel,
+    authLabel: input.embeddedWorkPane?.authLabel ?? input.homeState.authLabel,
+    sessionCount:
+      input.embeddedWorkPane?.sessionCount ?? input.homeState.sessionCount,
+    mcpServerCount:
+      input.embeddedWorkPane?.mcpServerCount ??
+      input.homeState.mcpServerCount,
+    mcpServers: input.embeddedWorkPane?.mcpServers ?? input.homeState.mcpServers,
+    latestResearchSessionId:
+      input.embeddedWorkPane?.latestResearchSessionId ??
+      input.homeState.latestResearchSessionId,
+    latestResearchSummary:
+      input.embeddedWorkPane?.latestResearchSummary ??
+      input.homeState.latestResearchSummary,
+    latestResearchTimestamp:
+      input.embeddedWorkPane?.latestResearchTimestamp ??
+      input.homeState.latestResearchTimestamp,
+    researchRunCount:
+      input.embeddedWorkPane?.researchRunCount ??
+      input.homeState.researchRunCount,
+    ...(input.initialSelectedSessionId
+      ? { initialSelectedSessionId: input.initialSelectedSessionId }
+      : {}),
+    sessions: input.embeddedWorkPane?.sessions ?? input.homeState.sessions,
+    initialView:
+      input.embeddedWorkPane?.renderWorkPane &&
+      input.initialSelectedSessionId?.startsWith("work-")
+        ? "work"
+        : "sessions",
+    contextLines:
+      input.contextLines ?? input.embeddedWorkPane?.contextLines ?? [],
+    ...(bridgeLines !== undefined ? { bridgeLines } : {}),
+    ...(memoryLines !== undefined ? { memoryLines } : {}),
+    ...(input.runAction ? { runAction: input.runAction } : {}),
+    ...(input.runSession ? { runSession: input.runSession } : {}),
+    ...(input.launchWorkSession
+      ? { launchWorkSession: input.launchWorkSession }
+      : {}),
+    ...(input.embeddedWorkPane?.renderWorkPane
+      ? { renderWorkPane: input.embeddedWorkPane.renderWorkPane }
+      : {}),
+    ...(input.embeddedWorkPane?.openEmbeddedWorkSession
+      ? {
+          openEmbeddedWorkSession:
+            input.embeddedWorkPane.openEmbeddedWorkSession,
+        }
+      : {}),
+    ...(input.refreshHomeState
+      ? { refreshHomeState: input.refreshHomeState }
+      : {}),
+  };
+}
+
+export type DashboardProps = TuiRenderOptions<TuiShellHomeState> & {
+  readonly workspaceRoot: string;
+};
+
+export function Dashboard(props: DashboardProps) {
   const { exit } = useApp();
   const [branch, setBranch] = useState("...");
   const [gitStatus, setGitStatus] = useState("...");
   const [runtime, setRuntime] = useState({ node: "", platform: "", arch: "" });
   const [researchDraft, setResearchDraft] = useState("");
+  const [contextLines, setContextLines] = useState(props.contextLines ?? []);
   const initialHomeState = {
     modeLabel: props.modeLabel ?? "default",
     authLabel: props.authLabel ?? "none",
@@ -1067,15 +1523,55 @@ export function Dashboard(props: {
   const selectedSession = model.primarySessions[centerState.sessionIndex];
   const selectedAction = model.utilityActions[centerState.actionIndex];
   const sessionCommands = model.primarySessions.map((session) => `unclecode resume ${session.sessionId}`);
-  const handoffToWorkSession = (forwardedArgs: readonly string[] = []) => {
-    if (!props.launchWorkSession) {
+  const openWorkPane = (forwardedArgs: readonly string[] = []) => {
+    const navigationMode = resolveWorkPaneNavigationMode({
+      forwardedArgs,
+      hasEmbeddedWorkPane: Boolean(props.renderWorkPane),
+      hasEmbeddedWorkController: Boolean(props.openEmbeddedWorkSession),
+      hasLaunchWorkSession: Boolean(props.launchWorkSession),
+    });
+
+    if (navigationMode === "embedded-view") {
+      dispatch({ type: "view.changed", view: "work" });
       return;
     }
 
-    exit();
-    setTimeout(() => {
-      void props.launchWorkSession?.(forwardedArgs);
-    }, 0);
+    if (navigationMode === "embedded-update") {
+      void (async () => {
+        const embeddedUpdate = await props.openEmbeddedWorkSession?.(
+          forwardedArgs,
+        );
+        const selectedSessionId =
+          embeddedUpdate?.selectedSessionId ??
+          parseSelectedSessionIdFromArgs(forwardedArgs);
+        if (embeddedUpdate?.contextLines) {
+          setContextLines(embeddedUpdate.contextLines);
+        }
+        if (embeddedUpdate?.homeState) {
+          dispatch({
+            type: "home.updated",
+            homeState: embeddedUpdate.homeState,
+            ...(selectedSessionId ? { selectedSessionId } : {}),
+          });
+        } else if (props.refreshHomeState) {
+          const refreshedHomeState = await props.refreshHomeState();
+          dispatch({
+            type: "home.updated",
+            homeState: refreshedHomeState,
+            ...(selectedSessionId ? { selectedSessionId } : {}),
+          });
+        }
+        dispatch({ type: "view.changed", view: "work" });
+      })();
+      return;
+    }
+
+    if (navigationMode === "launch-handoff") {
+      exit();
+      setTimeout(() => {
+        void props.launchWorkSession?.(forwardedArgs);
+      }, 0);
+    }
   };
   const selectedApproval = selectedAction
     ? shellState.approvals.find((approval) => approval.id === createApprovalRequestForAction(selectedAction.id)?.id)
@@ -1144,8 +1640,8 @@ export function Dashboard(props: {
       return true;
     }
 
-    if (action.id === "work-session" && props.launchWorkSession) {
-      handoffToWorkSession();
+    if (action.id === "work-session") {
+      openWorkPane();
       return true;
     }
 
@@ -1323,8 +1819,8 @@ export function Dashboard(props: {
       const runSession = props.runSession;
 
       if (result.selectedCommand && centerState.column === "actions" && selectedAction && runAction) {
-        if (selectedAction.id === "work-session" && props.launchWorkSession) {
-          handoffToWorkSession();
+        if (selectedAction.id === "work-session") {
+          openWorkPane();
           return;
         }
         if (selectedAction.id === "new-research" || selectedAction.id === "api-key-login") {
@@ -1367,8 +1863,8 @@ export function Dashboard(props: {
       }
 
       if (result.selectedCommand && centerState.column === "sessions" && selectedSession) {
-        if (selectedSession.sessionId.startsWith("work-") && props.launchWorkSession) {
-          handoffToWorkSession(["--session-id", selectedSession.sessionId]);
+        if (selectedSession.sessionId.startsWith("work-")) {
+          openWorkPane(["--session-id", selectedSession.sessionId]);
           return;
         }
         if (runSession) {
@@ -1452,7 +1948,7 @@ export function Dashboard(props: {
                 shellState={shellState}
                 model={model}
                 researchDraft={researchDraft}
-                contextLines={props.contextLines ?? []}
+                contextLines={contextLines}
                 bridgeLines={shellState.homeState.bridgeLines ?? props.bridgeLines ?? []}
                 memoryLines={shellState.homeState.memoryLines ?? props.memoryLines ?? []}
               />
@@ -1467,56 +1963,9 @@ export function Dashboard(props: {
   );
 }
 
-export async function renderTui(options?: {
-  readonly workspaceRoot?: string;
-  readonly modeLabel?: string;
-  readonly authLabel?: string;
-  readonly sessionCount?: number;
-  readonly mcpServerCount?: number;
-  readonly mcpServers?: readonly { name: string; transport: string; scope: string; trustTier: string; originLabel: string }[];
-  readonly latestResearchSessionId?: string | null;
-  readonly latestResearchSummary?: string | null;
-  readonly latestResearchTimestamp?: string | null;
-  readonly researchRunCount?: number;
-  readonly initialSelectedSessionId?: string | undefined;
-  readonly initialView?: TuiShellState["view"] | undefined;
-  readonly renderWorkPane?: ((controls: {
-    openSessions: () => void;
-    syncHomeState: (homeState: Partial<TuiShellHomeState>) => void;
-  }) => React.ReactNode) | undefined;
-  readonly sessions?: readonly SessionCenterSession[];
-  readonly contextLines?: readonly string[];
-  readonly bridgeLines?: readonly string[];
-  readonly memoryLines?: readonly string[];
-  readonly runAction?: ((input: { actionId: string; prompt?: string; onProgress?: ((line: string) => void) | undefined }) => Promise<readonly string[]>) | undefined;
-  readonly runSession?: ((sessionId: string) => Promise<readonly string[]>) | undefined;
-  readonly launchWorkSession?: ((forwardedArgs?: readonly string[]) => Promise<void>) | undefined;
-  readonly refreshHomeState?: (() => Promise<TuiShellHomeState>) | undefined;
-}): Promise<void> {
-  const instance = render(
-    <Dashboard
-      workspaceRoot={options?.workspaceRoot ?? process.cwd()}
-      {...(options?.modeLabel ? { modeLabel: options.modeLabel } : {})}
-      {...(options?.authLabel ? { authLabel: options.authLabel } : {})}
-      {...(options?.sessionCount !== undefined ? { sessionCount: options.sessionCount } : {})}
-      {...(options?.mcpServerCount !== undefined ? { mcpServerCount: options.mcpServerCount } : {})}
-      {...(options?.mcpServers ? { mcpServers: options.mcpServers } : {})}
-      {...(options?.latestResearchSessionId !== undefined ? { latestResearchSessionId: options.latestResearchSessionId } : {})}
-      {...(options?.latestResearchSummary !== undefined ? { latestResearchSummary: options.latestResearchSummary } : {})}
-      {...(options?.latestResearchTimestamp !== undefined ? { latestResearchTimestamp: options.latestResearchTimestamp } : {})}
-      {...(options?.researchRunCount !== undefined ? { researchRunCount: options.researchRunCount } : {})}
-      {...(options?.initialSelectedSessionId ? { initialSelectedSessionId: options.initialSelectedSessionId } : {})}
-      {...(options?.sessions ? { sessions: options.sessions } : {})}
-      contextLines={options?.contextLines ?? []}
-      bridgeLines={options?.bridgeLines ?? []}
-      memoryLines={options?.memoryLines ?? []}
-      {...(options?.runAction ? { runAction: options.runAction } : {})}
-      {...(options?.runSession ? { runSession: options.runSession } : {})}
-      {...(options?.launchWorkSession ? { launchWorkSession: options.launchWorkSession } : {})}
-      {...(options?.renderWorkPane ? { renderWorkPane: options.renderWorkPane } : {})}
-      {...(options?.initialView ? { initialView: options.initialView } : {})}
-      {...(options?.refreshHomeState ? { refreshHomeState: options.refreshHomeState } : {})}
-    />,
-  );
+export async function renderTui(
+  options?: TuiRenderOptions<TuiShellHomeState>,
+): Promise<void> {
+  const instance = render(createDashboardElement(options ?? {}));
   await instance.waitUntilExit();
 }

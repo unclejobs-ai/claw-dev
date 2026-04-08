@@ -240,6 +240,11 @@ test("completeOpenAIDeviceLogin stores returned oauth credentials", async () => 
 test("completeOpenAICodexDeviceLogin completes the codex device flow end-to-end", async () => {
   const writes = [];
   const seenUrls = [];
+  const scopedToken = [
+    Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url"),
+    Buffer.from(JSON.stringify({ scp: ["openid", "profile", "offline_access", "model.request"] })).toString("base64url"),
+    "sig",
+  ].join(".");
 
   const result = await completeOpenAICodexDeviceLogin({
     clientId: "client_123",
@@ -262,7 +267,7 @@ test("completeOpenAICodexDeviceLogin completes the codex device flow end-to-end"
         const parsed = new URLSearchParams(String(init?.body ?? ""));
         assert.equal(parsed.get("grant_type"), "authorization_code");
         assert.equal(parsed.get("client_id"), "client_123");
-        return new Response(JSON.stringify({ access_token: "at_123", refresh_token: "rt_123" }));
+        return new Response(JSON.stringify({ access_token: scopedToken, refresh_token: "rt_123" }));
       }
       return new Response("not found", { status: 404 });
     },
@@ -273,10 +278,42 @@ test("completeOpenAICodexDeviceLogin completes the codex device flow end-to-end"
 
   assert.equal(result.userCode, "user_123");
   assert.equal(result.verificationUri, "http://fake-oauth.local/codex/device");
-  assert.equal(writes[0].credentials.accessToken, "at_123");
+  assert.equal(writes[0].credentials.accessToken, scopedToken);
   assert.ok(seenUrls.some((value) => value.endsWith("/api/accounts/deviceauth/usercode")));
   assert.ok(seenUrls.some((value) => value.endsWith("/api/accounts/deviceauth/token")));
   assert.ok(seenUrls.some((value) => value.endsWith("/oauth/token")));
+});
+
+test("completeOpenAICodexDeviceLogin rejects tokens missing model.request scope", async () => {
+  const writes = [];
+  const missingScopeToken = [
+    Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url"),
+    Buffer.from(JSON.stringify({ scp: ["openid", "profile", "offline_access"] })).toString("base64url"),
+    "sig",
+  ].join(".");
+
+  await assert.rejects(
+    () => completeOpenAICodexDeviceLogin({
+      clientId: "client_123",
+      credentialsPath: "/tmp/openai-codex.json",
+      baseUrl: "http://fake-oauth.local",
+      fetch: async (url) => {
+        if (String(url).endsWith("/api/accounts/deviceauth/usercode")) {
+          return new Response(JSON.stringify({ device_auth_id: "device-auth-123", user_code: "user_123", interval: 0 }));
+        }
+        if (String(url).endsWith("/api/accounts/deviceauth/token")) {
+          return new Response(JSON.stringify({ authorization_code: "code_123", code_verifier: "verifier_123" }));
+        }
+        return new Response(JSON.stringify({ access_token: missingScopeToken, refresh_token: "rt_123" }));
+      },
+      writeCredentials: async (input) => {
+        writes.push(input);
+      },
+    }),
+    /model\.request/i,
+  );
+
+  assert.equal(writes.length, 0);
 });
 
 test("completeOpenAIDeviceLogin exposes the device code before polling", async () => {

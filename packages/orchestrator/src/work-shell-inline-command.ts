@@ -1,10 +1,14 @@
 export async function runWorkShellInlineCommand(
   args: readonly string[],
-  runInlineCommand: (args: readonly string[]) => Promise<readonly string[]>,
+  runInlineCommand: (
+    args: readonly string[],
+    onProgress?: ((line: string) => void) | undefined,
+  ) => Promise<readonly string[]>,
   formatLine: (line: string) => string = (line) => line,
+  onProgress?: ((line: string) => void) | undefined,
 ): Promise<{ readonly lines: readonly string[]; readonly failed: boolean }> {
   try {
-    const lines = await runInlineCommand(args);
+    const lines = await runInlineCommand(args, onProgress);
     return { lines: lines.length > 0 ? lines : ["No output."], failed: false };
   } catch (error) {
     const stdout = typeof error === "object" && error !== null && "stdout" in error ? String((error as { stdout?: unknown }).stdout ?? "") : "";

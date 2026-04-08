@@ -5,12 +5,12 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { resolveFastCliPath } from "../../apps/unclecode-cli/src/fast-cli.ts";
-import { launchSessionCenter } from "../../apps/unclecode-cli/src/interactive-shell.ts";
 import {
   createUncleCodeProgram,
-  launchWorkEntrypoint,
   shouldLaunchDefaultWorkSession,
 } from "../../apps/unclecode-cli/src/program.ts";
+import { launchSessionCenter } from "../../apps/unclecode-cli/src/session-center-launcher.ts";
+import { launchWorkEntrypoint } from "../../apps/unclecode-cli/src/work-bootstrap.ts";
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = path.resolve(testDirectory, "../..");
@@ -82,8 +82,33 @@ test("startup router keeps interactive boot behind dynamic imports without a wor
     path.join(workspaceRoot, "apps/unclecode-cli/src/index.ts"),
     "utf8",
   );
-  const interactiveShellSource = readFileSync(
-    path.join(workspaceRoot, "apps/unclecode-cli/src/interactive-shell.ts"),
+  const interactiveShellPath = path.join(
+    workspaceRoot,
+    "apps/unclecode-cli/src/interactive-shell.ts",
+  );
+  const sessionCenterBootstrapSource = readFileSync(
+    path.join(
+      workspaceRoot,
+      "apps/unclecode-cli/src/session-center-bootstrap.ts",
+    ),
+    "utf8",
+  );
+  const sessionCenterLauncherSource = readFileSync(
+    path.join(
+      workspaceRoot,
+      "apps/unclecode-cli/src/session-center-launcher.ts",
+    ),
+    "utf8",
+  );
+  const workBootstrapSource = readFileSync(
+    path.join(workspaceRoot, "apps/unclecode-cli/src/work-bootstrap.ts"),
+    "utf8",
+  );
+  const interactiveLaunchInputsSource = readFileSync(
+    path.join(
+      workspaceRoot,
+      "apps/unclecode-cli/src/interactive-launch-inputs.ts",
+    ),
     "utf8",
   );
   const programSource = readFileSync(
@@ -108,24 +133,125 @@ test("startup router keeps interactive boot behind dynamic imports without a wor
   assert.match(indexSource, /await maybeRunFastCliPath\(args\)/);
   assert.match(
     indexSource,
-    /await\s*\(await import\("\.\/interactive-shell\.js"\)\)\.launchWorkEntrypoint\(\[\]\)/,
+    /await\s*\(await import\("\.\/work-bootstrap\.js"\)\)\.launchWorkEntrypoint\(\[\]\)/,
   );
   assert.match(
     indexSource,
     /slashInput[\s\S]*await import\("\.\/command-router\.js"\)/,
   );
-  assert.doesNotMatch(
-    interactiveShellSource,
-    /import\s+\{\s*renderTui\s*\}\s+from\s+"@unclecode\/tui"/,
-  );
-  assert.match(interactiveShellSource, /await import\("@unclecode\/tui"\)/);
-  assert.match(interactiveShellSource, /import\("\.\/operational\.js"\)/);
+  assert.equal(existsSync(interactiveShellPath), false);
   assert.match(
-    interactiveShellSource,
+    sessionCenterBootstrapSource,
+    /await import\("@unclecode\/tui"\)/,
+  );
+  assert.match(
+    workBootstrapSource,
+    /import\s+type\s+\{[\s\S]*EmbeddedWorkDashboardSnapshot[\s\S]*EmbeddedWorkPaneRenderOptions[\s\S]*\}\s+from\s+"@unclecode\/tui"/,
+  );
+  assert.doesNotMatch(programSource, /from\s+"\.\/interactive-shell\.js"/);
+  assert.match(programSource, /from\s+"\.\/work-bootstrap\.js"/);
+  assert.match(programSource, /from\s+"\.\/session-center-launcher\.js"/);
+  assert.match(
+    sessionCenterLauncherSource,
+    /import\s+\{\s*createSessionCenterDashboardRenderOptions\s*\}\s+from\s+"@unclecode\/tui"/,
+  );
+  assert.match(
+    workBootstrapSource,
+    /import\s+\{\s*createEmbeddedWorkPaneController\s*\}\s+from\s+"@unclecode\/tui"/,
+  );
+  assert.match(workBootstrapSource, /function\s+withWorkCwd\(/);
+  assert.match(
+    workBootstrapSource,
+    /async\s+function\s+loadWorkEntrypointModule\(/,
+  );
+  assert.match(workBootstrapSource, /function\s+resolveWorkModuleLoader\(/);
+  assert.match(
+    workBootstrapSource,
+    /async\s+function\s+loadEmbeddedWorkPane\(/,
+  );
+  assert.match(
+    sessionCenterLauncherSource,
+    /export\s+async\s+function\s+launchSessionCenter\(/,
+  );
+  assert.match(
+    sessionCenterLauncherSource,
+    /const\s+\{\s*workspaceRoot,\s*env,\s*userHomeDir\s*\}\s*=\s*createSessionCenterEnvironment\(input\)/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /const\s+createHomeState\s*=\s*createSessionCenterHomeStateLoader\(/,
+  );
+  assert.match(
+    sessionCenterLauncherSource,
+    /const\s+renderInput\s*=\s*await\s+loadSessionCenterRenderInput\(/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /async\s+function\s+resolveSessionCenterDependencies\(/,
+  );
+  assert.match(
+    sessionCenterLauncherSource,
+    /const\s+\{\s*buildHomeState,\s*renderShell,\s*runAction,\s*runSession\s*\}\s*=\s*await\s+resolveSessionCenterDependencies\(/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /function\s+createWorkLaunchInput\(/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /function\s+createSessionCenterLaunchInput\(/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /function\s+createSessionCenterRuntimeCallbacks\(/,
+  );
+  assert.match(
+    sessionCenterLauncherSource,
+    /const\s+renderInput\s*=\s*await\s+loadSessionCenterRenderInput\(/,
+  );
+  assert.match(
+    sessionCenterLauncherSource,
+    /await\s+renderShell\([\s\S]*createSessionCenterDashboardRenderOptions(?:<[\s\S]*?>)?\(\s*renderInput\s*\)[\s\S]*\)/,
+  );
+  assert.match(sessionCenterBootstrapSource, /import\("\.\/operational\.js"\)/);
+  assert.match(
+    sessionCenterBootstrapSource,
+    /resolveSessionCenterDependencies[\s\S]*const\s+operational\s*=\s*deps\?\.buildHomeState/,
+  );
+  assert.match(
+    workBootstrapSource,
+    /launchWorkEntrypoint[\s\S]*const\s+loadModule\s*=\s*resolveWorkModuleLoader\(input\?\.loadModule\)/,
+  );
+  assert.match(
+    workBootstrapSource,
+    /loadEmbeddedWorkPane[\s\S]*const\s+loadModule\s*=\s*resolveWorkModuleLoader\(input\.loadWorkModule\)/,
+  );
+  assert.match(
+    sessionCenterLauncherSource,
+    /launchWorkSession:\s*\(forwardedArgs\s*=\s*\[\]\)\s*=>[\s\S]*launchWorkEntrypoint\(forwardedArgs/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /type\s+SharedBootstrapDependencies\s*=\s*SessionCenterBootstrapDependencies\s*&/,
+  );
+  assert.doesNotMatch(
+    workBootstrapSource,
+    /launchWorkEntrypoint[\s\S]*\(input\?\.loadModule\s*\?\?\s*\(\)\s*=>\s*loadWorkEntrypointModule\(\)\)\(\)/,
+  );
+  assert.doesNotMatch(
+    workBootstrapSource,
+    /loadEmbeddedWorkPane[\s\S]*\(loadWorkModule\s*\?\?\s*\(\)\s*=>\s*loadWorkEntrypointModule\(\)\)\(\)/,
+  );
+  assert.equal(
+    existsSync(interactiveShellPath),
+    false,
+  );
+  assert.match(
+    workBootstrapSource,
     /dist-work[\s\S]*apps[\s\S]*unclecode-cli[\s\S]*src[\s\S]*work-entry\.js/,
   );
   assert.doesNotMatch(
-    interactiveShellSource,
+    workBootstrapSource,
     /dist-work[\/",\s]+src[\/",\s]+index\.js/,
   );
   assert.doesNotMatch(programSource, /\.\/work-launcher\.js/);
@@ -210,9 +336,18 @@ test("launchSessionCenter reuses the interactive bootstrap for work handoff", as
   ]);
 });
 
-test("launchSessionCenter wires an embedded work pane when the work module exposes dashboard props", async () => {
+test("launchSessionCenter opens work view immediately for embedded work-session resumes", async () => {
   let receivedRenderWorkPane = undefined;
-  let embeddedArgs = undefined;
+  let receivedOpenEmbeddedWorkSession = undefined;
+  let receivedInitialView = undefined;
+  let receivedAuthLabel = undefined;
+  let receivedSessionCount = undefined;
+  let receivedSessions = undefined;
+  let receivedContextLines = undefined;
+  let receivedUpdatedContextLines = undefined;
+  let receivedUpdatedHomeState = undefined;
+  let receivedUpdatedSelectedSessionId = undefined;
+  const embeddedArgsCalls = [];
 
   await launchSessionCenter(
     {
@@ -245,14 +380,66 @@ test("launchSessionCenter wires an embedded work pane when the work module expos
       }),
       renderShell: async (options) => {
         receivedRenderWorkPane = options.renderWorkPane;
+        receivedOpenEmbeddedWorkSession = options.openEmbeddedWorkSession;
+        receivedInitialView = options.initialView;
+        receivedAuthLabel = options.authLabel;
+        receivedSessionCount = options.sessionCount;
+        receivedSessions = options.sessions;
+        receivedContextLines = options.contextLines;
+        const embeddedUpdate = await options.openEmbeddedWorkSession?.([
+          "--session-id",
+          "work-session-10",
+        ]);
+        receivedUpdatedContextLines = embeddedUpdate?.contextLines;
+        receivedUpdatedHomeState = embeddedUpdate?.homeState;
+        receivedUpdatedSelectedSessionId = embeddedUpdate?.selectedSessionId;
       },
       loadWorkModule: async () => ({
         loadWorkShellDashboardProps: async (args) => {
-          embeddedArgs = args;
+          embeddedArgsCalls.push([...args]);
           return {
             workspaceRoot: "/tmp/project-c",
             initialView: "work",
-            contextLines: ["Loaded guidance: AGENTS.md"],
+            authLabel: args.includes("work-session-10")
+              ? "api-key-file"
+              : "oauth-file",
+            sessionCount: 2,
+            sessions: args.includes("work-session-10")
+              ? [
+                  {
+                    sessionId: "work-session-10",
+                    state: "idle",
+                    updatedAt: "2026-04-05T12:05:00.000Z",
+                    model: "gpt-5.4",
+                    taskSummary: "Resume newer work",
+                  },
+                  {
+                    sessionId: "work-session-9",
+                    state: "idle",
+                    updatedAt: "2026-04-05T12:00:00.000Z",
+                    model: "gpt-5.4",
+                    taskSummary: "Resume work",
+                  },
+                ]
+              : [
+                  {
+                    sessionId: "work-session-9",
+                    state: "idle",
+                    updatedAt: "2026-04-05T12:00:00.000Z",
+                    model: "gpt-5.4",
+                    taskSummary: "Resume work",
+                  },
+                  {
+                    sessionId: "work-session-8",
+                    state: "idle",
+                    updatedAt: "2026-04-05T11:50:00.000Z",
+                    model: "gpt-5.4-mini",
+                    taskSummary: "Older work",
+                  },
+                ],
+            contextLines: args.includes("work-session-10")
+              ? ["Resumed session: work-session-10"]
+              : ["Loaded guidance: AGENTS.md"],
             renderWorkPane: () => null,
           };
         },
@@ -261,370 +448,88 @@ test("launchSessionCenter wires an embedded work pane when the work module expos
   );
 
   assert.equal(typeof receivedRenderWorkPane, "function");
-  assert.deepEqual(embeddedArgs, [
-    "--cwd",
-    "/tmp/project-c",
-    "--session-id",
-    "work-session-9",
+  assert.equal(typeof receivedOpenEmbeddedWorkSession, "function");
+  assert.equal(receivedInitialView, "work");
+  assert.equal(receivedAuthLabel, "oauth-file");
+  assert.equal(receivedSessionCount, 2);
+  assert.deepEqual(receivedSessions, [
+    {
+      sessionId: "work-session-9",
+      state: "idle",
+      updatedAt: "2026-04-05T12:00:00.000Z",
+      model: "gpt-5.4",
+      taskSummary: "Resume work",
+    },
+    {
+      sessionId: "work-session-8",
+      state: "idle",
+      updatedAt: "2026-04-05T11:50:00.000Z",
+      model: "gpt-5.4-mini",
+      taskSummary: "Older work",
+    },
+  ]);
+  assert.deepEqual(receivedContextLines, ["Loaded guidance: AGENTS.md"]);
+  assert.deepEqual(receivedUpdatedContextLines, [
+    "Resumed session: work-session-10",
+  ]);
+  assert.equal(receivedUpdatedSelectedSessionId, "work-session-10");
+  assert.deepEqual(receivedUpdatedHomeState, {
+    authLabel: "api-key-file",
+    sessionCount: 2,
+    sessions: [
+      {
+        sessionId: "work-session-10",
+        state: "idle",
+        updatedAt: "2026-04-05T12:05:00.000Z",
+        model: "gpt-5.4",
+        taskSummary: "Resume newer work",
+      },
+      {
+        sessionId: "work-session-9",
+        state: "idle",
+        updatedAt: "2026-04-05T12:00:00.000Z",
+        model: "gpt-5.4",
+        taskSummary: "Resume work",
+      },
+    ],
+  });
+  assert.deepEqual(embeddedArgsCalls, [
+    ["--cwd", "/tmp/project-c", "--session-id", "work-session-9"],
+    ["--cwd", "/tmp/project-c", "--session-id", "work-session-10"],
   ]);
 });
 
-test("startRepl is wired through app-owned managed dashboard helpers instead of local root assembly", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
+test("obsolete root cli compatibility surfaces are removed after app/package seams take over", () => {
+  assert.equal(existsSync(path.join(workspaceRoot, "src/cli.tsx")), false);
+  assert.equal(existsSync(path.join(workspaceRoot, "src/cli.d.ts")), false);
+
   const runtimeSource = readFileSync(
     path.join(workspaceRoot, "apps/unclecode-cli/src/work-runtime.ts"),
     "utf8",
   );
+  assert.equal(existsSync(path.join(workspaceRoot, "src/composer.tsx")), false);
+  assert.equal(
+    existsSync(path.join(workspaceRoot, "src/session-store-paths.ts")),
+    false,
+  );
+  assert.equal(
+    existsSync(path.join(workspaceRoot, "src/context-memory.ts")),
+    false,
+  );
+  assert.equal(
+    existsSync(path.join(workspaceRoot, "src/workspace-skills.ts")),
+    false,
+  );
 
-  assert.match(
-    cliSource,
-    /export\s*\{[^}]*resolveWorkShellInlineCommand[^}]*createWorkShellDashboardProps[^}]*startRepl[^}]*\}\s*from\s*"\.\.\/apps\/unclecode-cli\/src\/work-runtime\.js"/,
-  );
-  assert.match(
-    cliSource,
-    /export\s+type\s*\{[^}]*StartReplOptions[^}]*\}\s*from\s*"\.\.\/apps\/unclecode-cli\/src\/work-runtime\.js"/,
-  );
-  assert.doesNotMatch(
-    cliSource,
-    /export function createWorkShellDashboardProps\(/,
-  );
-  assert.doesNotMatch(cliSource, /export async function startRepl\(/);
-  assert.doesNotMatch(cliSource, /type StartReplOptions = \{/);
-  assert.doesNotMatch(cliSource, /function\s+App\s*\(/);
-  assert.doesNotMatch(
-    cliSource,
-    /render\s*\(\s*<Dashboard\s*\{\.\.\.createWorkShellDashboardProps\(agent, options\)\}/,
-  );
   assert.match(
     runtimeSource,
     /export function createWorkShellDashboardProps\(/,
   );
   assert.match(runtimeSource, /export async function startRepl\(/);
-});
-
-test("src/cli.tsx delegates work-shell dashboard assembly to app-owned helpers instead of building pane runtime inline", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /from\s*"\.\.\/apps\/unclecode-cli\/src\/work-runtime\.js"/,
-  );
-  assert.doesNotMatch(cliSource, /createManagedDashboardInput/);
-  assert.doesNotMatch(cliSource, /createManagedDashboardProps/);
-  assert.doesNotMatch(cliSource, /createWorkShellPaneRuntime/);
-  assert.doesNotMatch(cliSource, /createWorkShellEngine\(/);
-  assert.doesNotMatch(cliSource, /getWorkShellSlashSuggestions\(/);
-  assert.doesNotMatch(cliSource, /shouldBlockSlashSubmit\(/);
-  assert.doesNotMatch(cliSource, /new\s+WorkShellEngine\s*</);
-  assert.doesNotMatch(cliSource, /new\s+WorkShellEngine\s*\(/);
-});
-
-test("src/cli.tsx imports composer-input loading from @unclecode/orchestrator", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /import\s*\{[^}]*resolveComposerInput[^}]*\}\s*from\s*"@unclecode\/orchestrator"/,
-  );
-  assert.doesNotMatch(cliSource, /async function toImageAttachment\(/);
-  assert.doesNotMatch(
-    cliSource,
-    /export async function resolveComposerInput\(/,
-  );
-});
-
-test("src/cli.tsx re-exports managed work-shell dashboard helpers from app runtime while src/composer.tsx stays a thin shim", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-  const composerSource = readFileSync(
-    path.join(workspaceRoot, "src/composer.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /export\s*\{[^}]*createWorkShellDashboardProps[^}]*startRepl[^}]*\}\s*from\s*"\.\.\/apps\/unclecode-cli\/src\/work-runtime\.js"/,
-  );
-  assert.doesNotMatch(
-    cliSource,
-    /import\s*\{[^}]*Composer[^}]*\}\s*from\s*"@unclecode\/tui"/,
-  );
-  assert.doesNotMatch(cliSource, /from\s+"\.\/composer\.js"/);
-  assert.match(composerSource, /from\s*"@unclecode\/tui"/);
-  assert.match(composerSource, /Composer/);
-  assert.match(composerSource, /sanitizeComposerInput/);
-  assert.match(composerSource, /shouldTreatComposerChangeAsPaste/);
-  assert.doesNotMatch(
-    composerSource,
-    /function\s+shouldTreatComposerChangeAsPaste\(/,
-  );
-  assert.doesNotMatch(composerSource, /function\s+Composer\(/);
-});
-
-test("src/cli.tsx keeps slash helper logic behind @unclecode/orchestrator", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /import\s*\{[^}]*resolveWorkShellSlashCommand[^}]*\}\s*from\s*"@unclecode\/orchestrator"/,
-  );
-  assert.doesNotMatch(cliSource, /function\s+getWorkShellCommandRegistry\(/);
-  assert.doesNotMatch(
-    cliSource,
-    /export function resolveWorkShellSlashCommand\(/,
-  );
-  assert.doesNotMatch(
-    cliSource,
-    /export function getWorkShellSlashSuggestions\(/,
-  );
-  assert.doesNotMatch(cliSource, /export function shouldBlockSlashSubmit\(/);
-  assert.doesNotMatch(cliSource, /getWorkShellSlashSuggestions\(/);
-  assert.doesNotMatch(cliSource, /shouldBlockSlashSubmit\(/);
-});
-
-test("src/cli.tsx imports reasoning helpers from @unclecode/orchestrator", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /import\s*\{[^}]*describeReasoning[^}]*resolveReasoningCommand[^}]*\}\s*from\s*"@unclecode\/orchestrator"/,
-  );
-  assert.doesNotMatch(cliSource, /export function describeReasoning\(/);
-  assert.doesNotMatch(cliSource, /export function resolveReasoningCommand\(/);
-});
-
-test("src/cli.tsx lets the shared managed dashboard helper absorb work-shell input controller wiring", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /export\s*\{[^}]*createWorkShellDashboardProps[^}]*startRepl[^}]*\}\s*from\s*"\.\.\/apps\/unclecode-cli\/src\/work-runtime\.js"/,
-  );
-  assert.doesNotMatch(cliSource, /useWorkShellPaneState/);
-  assert.doesNotMatch(
-    cliSource,
-    /import\s*\{[^}]*useWorkShellInputController[^}]*\}\s*from\s*"@unclecode\/tui"/,
-  );
-  assert.doesNotMatch(cliSource, /useWorkShellInputController\(\{/);
-  assert.doesNotMatch(cliSource, /useInput\(\(value, key\) =>/);
-});
-
-test("src/cli.tsx delegates direct WorkShellPane and lifecycle hook ownership to the shared TUI helper", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /export\s*\{[^}]*createWorkShellDashboardProps[^}]*startRepl[^}]*\}\s*from\s*"\.\.\/apps\/unclecode-cli\/src\/work-runtime\.js"/,
-  );
-  assert.doesNotMatch(
-    cliSource,
-    /import\s*\{[^}]*WorkShellPane[^}]*\}\s*from\s*"@unclecode\/tui"/,
-  );
-  assert.doesNotMatch(
-    cliSource,
-    /import\s*\{[^}]*useWorkShellPaneState[^}]*\}\s*from\s*"@unclecode\/tui"/,
-  );
-  assert.doesNotMatch(cliSource, /useWorkShellPaneState/);
-  assert.doesNotMatch(cliSource, /useWorkShellEngineState\(engine\)/);
-  assert.doesNotMatch(cliSource, /useWorkShellComposerPreview\(\{/);
-  assert.doesNotMatch(
-    cliSource,
-    /useWorkShellDashboardHomeSync(?:<[^>]+>)?\(\{/,
-  );
-  assert.doesNotMatch(cliSource, /useWorkShellSlashState\(\{/);
-});
-
-test("src/cli.tsx lets the shared managed dashboard helper absorb dashboard home sync wiring", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /export\s*\{[^}]*createWorkShellDashboardProps[^}]*startRepl[^}]*\}\s*from\s*"\.\.\/apps\/unclecode-cli\/src\/work-runtime\.js"/,
-  );
-  assert.doesNotMatch(cliSource, /useWorkShellPaneState/);
-  assert.doesNotMatch(
-    cliSource,
-    /import\s*\{[^}]*useWorkShellDashboardHomeSync[^}]*\}\s*from\s*"@unclecode\/tui"/,
-  );
-  assert.doesNotMatch(
-    cliSource,
-    /useWorkShellDashboardHomeSync(?:<[^>]+>)?\(\{/,
-  );
-  assert.doesNotMatch(cliSource, /createWorkShellDashboardHomePatch\(\{/);
-  assert.doesNotMatch(cliSource, /createWorkShellDashboardHomeSyncState\(\{/);
-  assert.doesNotMatch(cliSource, /shouldRefreshDashboardHomeState\(/);
-});
-
-test("src/cli.tsx imports work-shell session helpers from @unclecode/orchestrator", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /import\s*\{[^}]*listSessionLines[^}]*persistWorkShellSessionSnapshot[^}]*\}\s*from\s*"@unclecode\/orchestrator"/,
-  );
-  assert.doesNotMatch(
-    cliSource,
-    /export\s+async\s+function\s+listSessionLines\(/,
-  );
-  assert.doesNotMatch(
-    cliSource,
-    /export\s+async\s+function\s+persistWorkShellSessionSnapshot\(/,
-  );
-});
-
-test("src/cli.tsx imports session-store root resolution from @unclecode/session-store and src/session-store-paths.ts is a thin shim", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-  const shimSource = readFileSync(
-    path.join(workspaceRoot, "src/session-store-paths.ts"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /import\s*\{[^}]*getSessionStoreRoot[^}]*\}\s*from\s*"@unclecode\/session-store"/,
-  );
-  assert.doesNotMatch(cliSource, /from\s+"\.\/session-store-paths\.js"/);
-  assert.match(shimSource, /from\s*"@unclecode\/session-store"/);
-  assert.doesNotMatch(shimSource, /function\s+getSessionStoreRoot\(/);
-});
-
-test("src/cli.tsx imports context-memory helpers from @unclecode/context-broker and src/context-memory.ts is a thin shim", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-  const shimSource = readFileSync(
-    path.join(workspaceRoot, "src/context-memory.ts"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /import\s*\{[^}]*listProjectBridgeLines[^}]*listScopedMemoryLines[^}]*publishContextBridge[^}]*writeScopedMemory[^}]*\}\s*from\s*"@unclecode\/context-broker"/,
-  );
-  assert.doesNotMatch(cliSource, /from\s+"\.\/context-memory\.js"/);
-  assert.match(shimSource, /from\s*"@unclecode\/context-broker"/);
-  assert.doesNotMatch(
-    shimSource,
-    /export\s+async\s+function\s+publishContextBridge\(/,
-  );
-  assert.doesNotMatch(
-    shimSource,
-    /export\s+async\s+function\s+listProjectBridgeLines\(/,
-  );
-  assert.doesNotMatch(
-    shimSource,
-    /export\s+async\s+function\s+writeScopedMemory\(/,
-  );
-  assert.doesNotMatch(
-    shimSource,
-    /export\s+async\s+function\s+listScopedMemoryLines\(/,
-  );
-});
-
-test("src/cli.tsx imports workspace-skill helpers from @unclecode/context-broker and src/workspace-skills.ts is a thin shim", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-  const shimSource = readFileSync(
-    path.join(workspaceRoot, "src/workspace-skills.ts"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /import\s*\{[^}]*listAvailableSkills[^}]*loadNamedSkill[^}]*\}\s*from\s*"@unclecode\/context-broker"/,
-  );
-  assert.doesNotMatch(cliSource, /from\s+"\.\/workspace-skills\.js"/);
-  assert.match(shimSource, /from\s*"@unclecode\/context-broker"/);
-  assert.doesNotMatch(
-    shimSource,
-    /export\s+async\s+function\s+discoverSkillMetadata\(/,
-  );
-  assert.doesNotMatch(
-    shimSource,
-    /export\s+async\s+function\s+listAvailableSkills\(/,
-  );
-  assert.doesNotMatch(
-    shimSource,
-    /export\s+async\s+function\s+loadNamedSkill\(/,
-  );
-  assert.doesNotMatch(
-    shimSource,
-    /export\s+function\s+clearWorkspaceSkillCache\(/,
-  );
-});
-
-test("src/cli.tsx re-exports inline-command resolution from app runtime instead of keeping a local wrapper", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-  const runtimeSource = readFileSync(
-    path.join(workspaceRoot, "apps/unclecode-cli/src/work-runtime.ts"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /export\s*\{[^}]*resolveWorkShellInlineCommand[^}]*\}\s*from\s*"\.\.\/apps\/unclecode-cli\/src\/work-runtime\.js"/,
-  );
-  assert.doesNotMatch(
-    cliSource,
-    /export\s+const\s+resolveWorkShellInlineCommand\s*=|export\s+async\s+function\s+resolveWorkShellInlineCommand\(/,
-  );
   assert.match(
     runtimeSource,
     /export\s+const\s+resolveWorkShellInlineCommand\s*=|export\s+async\s+function\s+resolveWorkShellInlineCommand\(/,
   );
-  assert.doesNotMatch(cliSource, /stdout\?: unknown/);
-  assert.doesNotMatch(cliSource, /stderr\?: unknown/);
-});
-
-test("src/cli.tsx imports auth-label parsing from @unclecode/tui", () => {
-  const cliSource = readFileSync(
-    path.join(workspaceRoot, "src/cli.tsx"),
-    "utf8",
-  );
-
-  assert.match(
-    cliSource,
-    /import\s*\{[^}]*extractAuthLabel[^}]*\}\s*from\s*"@unclecode\/tui"/,
-  );
-  assert.doesNotMatch(cliSource, /function extractAuthLabel\(/);
 });
 
 test("obsolete root runtime wrappers are removed once app-owned work entrypoint owns the packaged work bootstrap", () => {
@@ -687,48 +592,51 @@ test("obsolete root agent/provider compatibility surfaces are removed", () => {
   );
 });
 
-test("src/config.ts is now a thin shim over @unclecode/orchestrator", () => {
-  const source = readFileSync(
-    path.join(workspaceRoot, "src/config.ts"),
+test("obsolete root utility compatibility surfaces are removed", () => {
+  for (const relativePath of [
+    "src/composer.tsx",
+    "src/composer.d.ts",
+    "src/config.ts",
+    "src/config.d.ts",
+    "src/context-memory.ts",
+    "src/context-memory.d.ts",
+    "src/session-store-paths.ts",
+    "src/session-store-paths.d.ts",
+    "src/tools.ts",
+    "src/tools.d.ts",
+    "src/work-agent.ts",
+    "src/work-agent.d.ts",
+    "src/workspace-skills.ts",
+    "src/workspace-skills.d.ts",
+    "src/workspace-guidance.ts",
+    "src/workspace-guidance.d.ts",
+  ]) {
+    assert.equal(
+      existsSync(path.join(workspaceRoot, relativePath)),
+      false,
+      relativePath,
+    );
+  }
+});
+
+test("remaining root src residue is either removed or relocated out of the runtime root", () => {
+  const readmeSource = readFileSync(
+    path.join(workspaceRoot, "README.md"),
     "utf8",
   );
 
-  assert.match(source, /from\s+"@unclecode\/orchestrator"/);
-  assert.match(
-    source,
-    /export\s+type\s*\{[^}]*AppConfig[^}]*AppReasoningConfig[^}]*\}/s,
+  assert.equal(existsSync(path.join(workspaceRoot, "src")), false);
+  assert.equal(existsSync(path.join(workspaceRoot, "src/types.ts")), false);
+  assert.equal(
+    existsSync(path.join(workspaceRoot, "src/anthropicCompatProxy.ts")),
+    false,
   );
-  assert.match(source, /export\s*\{\s*loadConfig\s*\}/);
-  assert.doesNotMatch(source, /const\s+envSchema\s*=/);
-  assert.doesNotMatch(source, /async\s+function\s+loadConfig\s*\(/);
-});
-
-test("src/tools.ts is now a thin shim over @unclecode/orchestrator", () => {
-  const source = readFileSync(path.join(workspaceRoot, "src/tools.ts"), "utf8");
-
-  assert.match(source, /from\s+"@unclecode\/orchestrator"/);
-  assert.match(
-    source,
-    /export\s+type\s*\{[^}]*ToolDefinition[^}]*ToolHandler[^}]*ToolResult[^}]*\}/s,
+  assert.equal(
+    existsSync(path.join(workspaceRoot, "scripts/anthropic-compat-proxy.ts")),
+    true,
   );
-  assert.match(
-    source,
-    /export\s*\{[^}]*toolDefinitions[^}]*toolHandlers[^}]*\}/s,
-  );
-  assert.doesNotMatch(source, /async\s+function\s+listFiles\s*\(/);
-  assert.doesNotMatch(source, /async\s+function\s+runShell\s*\(/);
-});
-
-test("src/work-agent.ts is now a thin shim over @unclecode/orchestrator", () => {
-  const source = readFileSync(
-    path.join(workspaceRoot, "src/work-agent.ts"),
-    "utf8",
-  );
-
-  assert.match(source, /from\s+"@unclecode\/orchestrator"/);
-  assert.match(source, /export\s*\{\s*WorkAgent\s*\}/);
-  assert.doesNotMatch(source, /function\s+buildComplexTasks\s*\(/);
-  assert.doesNotMatch(source, /function\s+resolveWorkerBudget\s*\(/);
+  assert.match(readmeSource, /scripts\/anthropic-compat-proxy\.ts/);
+  assert.doesNotMatch(readmeSource, /src\/anthropicCompatProxy\.ts/);
 });
 
 test("root compat sources no longer keep stale checked-in generated runtime/map artifacts", () => {
@@ -829,103 +737,32 @@ test("repo behavioral tests import owning package and app seams instead of root 
 });
 
 test("root declaration shims re-export owner seams instead of preserving stale local declarations", () => {
-  const cliDeclaration = readFileSync(
-    path.join(workspaceRoot, "src/cli.d.ts"),
-    "utf8",
+  assert.equal(existsSync(path.join(workspaceRoot, "src/cli.d.ts")), false);
+  assert.equal(
+    existsSync(path.join(workspaceRoot, "src/composer.d.ts")),
+    false,
   );
-  const composerDeclaration = readFileSync(
-    path.join(workspaceRoot, "src/composer.d.ts"),
-    "utf8",
+  assert.equal(existsSync(path.join(workspaceRoot, "src/config.d.ts")), false);
+  assert.equal(
+    existsSync(path.join(workspaceRoot, "src/context-memory.d.ts")),
+    false,
   );
-  const configDeclaration = readFileSync(
-    path.join(workspaceRoot, "src/config.d.ts"),
-    "utf8",
+  assert.equal(
+    existsSync(path.join(workspaceRoot, "src/session-store-paths.d.ts")),
+    false,
   );
-  const contextMemoryDeclaration = readFileSync(
-    path.join(workspaceRoot, "src/context-memory.d.ts"),
-    "utf8",
+  assert.equal(existsSync(path.join(workspaceRoot, "src/tools.d.ts")), false);
+  assert.equal(
+    existsSync(path.join(workspaceRoot, "src/work-agent.d.ts")),
+    false,
   );
-  const sessionStorePathsDeclaration = readFileSync(
-    path.join(workspaceRoot, "src/session-store-paths.d.ts"),
-    "utf8",
+  assert.equal(
+    existsSync(path.join(workspaceRoot, "src/workspace-skills.d.ts")),
+    false,
   );
-  const toolsDeclaration = readFileSync(
-    path.join(workspaceRoot, "src/tools.d.ts"),
-    "utf8",
-  );
-  const workAgentDeclaration = readFileSync(
-    path.join(workspaceRoot, "src/work-agent.d.ts"),
-    "utf8",
-  );
-  const workspaceGuidanceDeclaration = readFileSync(
-    path.join(workspaceRoot, "src/workspace-guidance.d.ts"),
-    "utf8",
-  );
-  const workspaceSkillsDeclaration = readFileSync(
-    path.join(workspaceRoot, "src/workspace-skills.d.ts"),
-    "utf8",
-  );
-
-  assert.match(
-    cliDeclaration,
-    /export\s+type\s*\{[^}]*StartReplOptions[^}]*\}\s*from\s*"\.\.\/apps\/unclecode-cli\/src\/work-runtime\.js"/s,
-  );
-  assert.match(cliDeclaration, /from\s+"@unclecode\/orchestrator"/);
-  assert.match(cliDeclaration, /from\s+"@unclecode\/tui"/);
-  assert.match(cliDeclaration, /from\s+"@unclecode\/context-broker"/);
-  assert.match(cliDeclaration, /from\s+"@unclecode\/session-store"/);
-  assert.doesNotMatch(cliDeclaration, /declare\s+function\s+startRepl/);
-  assert.doesNotMatch(cliDeclaration, /type\s+StartReplOptions\s*=\s*\{/);
-
-  assert.match(composerDeclaration, /from\s+"@unclecode\/tui"/);
-  assert.doesNotMatch(composerDeclaration, /declare\s+function\s+Composer/);
-
-  assert.match(configDeclaration, /from\s+"@unclecode\/orchestrator"/);
-  assert.doesNotMatch(configDeclaration, /declare\s+function\s+loadConfig/);
-  assert.doesNotMatch(configDeclaration, /from\s+"\.\/providers\.js"/);
-
-  assert.match(contextMemoryDeclaration, /from\s+"@unclecode\/context-broker"/);
-  assert.doesNotMatch(
-    contextMemoryDeclaration,
-    /declare\s+function\s+publishContextBridge/,
-  );
-
-  assert.match(
-    sessionStorePathsDeclaration,
-    /from\s+"@unclecode\/session-store"/,
-  );
-  assert.doesNotMatch(
-    sessionStorePathsDeclaration,
-    /declare\s+function\s+getSessionStoreRoot/,
-  );
-
-  assert.match(toolsDeclaration, /from\s+"@unclecode\/orchestrator"/);
-  assert.doesNotMatch(toolsDeclaration, /declare\s+const\s+toolDefinitions/);
-
-  assert.match(workAgentDeclaration, /from\s+"@unclecode\/orchestrator"/);
-  assert.doesNotMatch(workAgentDeclaration, /declare\s+class\s+WorkAgent/);
-
-  assert.match(
-    workspaceGuidanceDeclaration,
-    /from\s+"@unclecode\/context-broker"/,
-  );
-  assert.match(
-    workspaceGuidanceDeclaration,
-    /export\s+function\s+clearWorkspaceGuidanceCache/,
-  );
-  assert.match(
-    workspaceGuidanceDeclaration,
-    /export\s+function\s+loadWorkspaceGuidance/,
-  );
-  assert.doesNotMatch(workspaceGuidanceDeclaration, /sourceMappingURL/);
-
-  assert.match(
-    workspaceSkillsDeclaration,
-    /from\s+"@unclecode\/context-broker"/,
-  );
-  assert.doesNotMatch(
-    workspaceSkillsDeclaration,
-    /declare\s+function\s+discoverSkillMetadata/,
+  assert.equal(
+    existsSync(path.join(workspaceRoot, "src/workspace-guidance.d.ts")),
+    false,
   );
 });
 

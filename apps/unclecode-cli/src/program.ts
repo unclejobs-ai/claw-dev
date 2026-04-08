@@ -38,12 +38,9 @@ import {
   persistProjectMode,
   runResearchPassData,
 } from "./operational.js";
-import {
-  launchSessionCenter,
-  launchWorkEntrypoint,
-  shouldLaunchDefaultWorkSession,
-  withWorkCwd,
-} from "./interactive-shell.js";
+import { shouldLaunchDefaultWorkSession } from "./startup-paths.js";
+import { launchSessionCenter } from "./session-center-launcher.js";
+import { launchWorkEntrypoint, withWorkCwd } from "./work-bootstrap.js";
 
 const UNCLECODE_CLI_VERSION = "0.1.0";
 

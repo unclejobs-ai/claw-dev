@@ -434,7 +434,10 @@ test("WorkShellEngine shows auth progress while inline oauth is pending", async 
     resolveWorkShellSlashCommand(input) {
       return input === "/auth login" ? ["auth", "login"] : undefined;
     },
-    async resolveWorkShellInlineCommand() {
+    async resolveWorkShellInlineCommand(_args, _runInlineCommand, onProgress) {
+      onProgress?.("Opening browser…");
+      onProgress?.("Enter code: ABCD-1234");
+      onProgress?.("Waiting for device approval…");
       return inlinePromise;
     },
   });
@@ -445,8 +448,9 @@ test("WorkShellEngine shows auth progress while inline oauth is pending", async 
 
   assert.equal(engine.getState().panel.title, "Auth");
   assert.deepEqual(engine.getState().panel.lines, [
-    "Starting OAuth…",
-    "Check the browser window.",
+    "Enter code: ABCD-1234",
+    "Waiting for device approval…",
+    "Opening browser…",
   ]);
 
   resolveInline({ lines: ["OAuth login complete.", "Auth: oauth-file", "Route: device-oauth"], failed: false });

@@ -5,7 +5,10 @@ import path from "node:path";
 import test from "node:test";
 
 import { buildTuiHomeState } from "../../apps/unclecode-cli/src/operational.ts";
-import { publishContextBridge, writeScopedMemory } from "../../src/context-memory.ts";
+import {
+  publishContextBridge,
+  writeScopedMemory,
+} from "@unclecode/context-broker";
 
 test("buildTuiHomeState surfaces bridge and project memory lines for the session center", async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), "unclecode-tui-home-"));

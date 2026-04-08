@@ -54,6 +54,7 @@ import {
   formatWorkShellError,
   refineInlineCommandPanelLines,
   renderManagedWorkShellDashboard,
+  type EmbeddedWorkDashboardSnapshot,
   type TuiShellHomeState,
 } from "@unclecode/tui";
 import * as path from "node:path";
@@ -230,12 +231,14 @@ function parseArgs(argv: string[]): ParsedArgs {
 async function runInlineCommand(
   args: readonly string[],
   cwd: string,
+  onProgress?: ((line: string) => void) | undefined,
 ): Promise<readonly string[]> {
   return runWorkShellInlineAction({
     args,
     workspaceRoot: cwd,
     env: process.env,
     ...(process.env.HOME ? { userHomeDir: process.env.HOME } : {}),
+    ...(onProgress ? { onProgress } : {}),
   });
 }
 
@@ -303,9 +306,18 @@ export async function loadResumedWorkSession(input: {
 
 export const resolveWorkShellInlineCommand = (
   args: readonly string[],
-  runInlineCommand: (args: readonly string[]) => Promise<readonly string[]>,
+  runInlineCommand: (
+    args: readonly string[],
+    onProgress?: ((line: string) => void) | undefined,
+  ) => Promise<readonly string[]>,
+  onProgress?: ((line: string) => void) | undefined,
 ): Promise<{ readonly lines: readonly string[]; readonly failed: boolean }> =>
-  runWorkShellInlineCommand(args, runInlineCommand, formatWorkShellError);
+  runWorkShellInlineCommand(
+    args,
+    runInlineCommand,
+    formatWorkShellError,
+    onProgress,
+  );
 
 export function createManagedDashboardInput(session: ManagedDashboardSession) {
   return {
@@ -555,7 +567,10 @@ async function loadWorkCliSession(argv: readonly string[]) {
       refreshHomeState,
       refreshAuthState,
       browserOAuthAvailable,
-      runInlineCommand: (args: readonly string[]) => runInlineCommand(args, cwd),
+      runInlineCommand: (
+        args: readonly string[],
+        onProgress?: ((line: string) => void) | undefined,
+      ) => runInlineCommand(args, cwd, onProgress),
       saveApiKeyAuth: (raw: string) => runTuiSessionCenterAction({
         actionId: "api-key-login",
         workspaceRoot: cwd,
@@ -567,14 +582,16 @@ async function loadWorkCliSession(argv: readonly string[]) {
   };
 }
 
-export function createManagedDashboardProps(session: ManagedDashboardSession) {
+export function createManagedDashboardProps(
+  session: ManagedDashboardSession,
+): EmbeddedWorkDashboardSnapshot<TuiShellHomeState> {
   return createManagedWorkShellDashboardProps(createManagedDashboardInput(session));
 }
 
 export function createWorkShellDashboardProps(
   agent: StartReplAgent,
   options: StartReplOptions,
-) {
+): EmbeddedWorkDashboardSnapshot<TuiShellHomeState> {
   return createManagedDashboardProps({ agent, options });
 }
 
@@ -587,7 +604,7 @@ export async function startRepl(
 
 export async function loadWorkShellDashboardProps(
   argv: readonly string[] = [],
-) {
+): Promise<EmbeddedWorkDashboardSnapshot<TuiShellHomeState>> {
   const session = await loadWorkCliSession(argv);
   if (session.prompt) {
     throw new Error("Cannot build work-shell dashboard props for prompt mode.");

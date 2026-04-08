@@ -26,7 +26,7 @@ UncleCode is designed to feel like one tool rather than a provider-specific wrap
 
 - `Leonxlnx-claude-code/`
   - bundled terminal client and platform launchers
-- `src/anthropicCompatProxy.ts`
+- `scripts/anthropic-compat-proxy.ts`
   - local Anthropic-compatible proxy used for OpenAI, Gemini, Groq, Ollama, Copilot, and z.ai
 - `.env.example`
   - optional environment template for local setup
@@ -322,7 +322,7 @@ This shows which models are currently loaded and whether they are using CPU, GPU
 You can also confirm that the UncleCode proxy is healthy:
 
 ```powershell
-node --import tsx src/anthropicCompatProxy.ts
+node --import tsx scripts/anthropic-compat-proxy.ts
 ```
 
 Then open:

@@ -96,6 +96,28 @@ function extractOAuthClientIdFromPayload(payload: Record<string, unknown> | null
   return undefined;
 }
 
+function hasRequiredModelRequestScope(token: string): boolean {
+  const payload = parseJwtPayload(token);
+  if (!payload) {
+    return true;
+  }
+
+  const scopeValue = payload.scp ?? payload.scope;
+  const scopes = Array.isArray(scopeValue)
+    ? scopeValue.filter((value): value is string => typeof value === "string")
+    : typeof scopeValue === "string"
+      ? scopeValue.split(/\s+/).filter(Boolean)
+      : [];
+
+  return scopes.length === 0 || scopes.includes("model.request");
+}
+
+function assertModelRequestScope(accessToken: string): void {
+  if (!hasRequiredModelRequestScope(accessToken)) {
+    throw new Error("OAuth token lacks model.request scope. Use API key login or proper browser OAuth with OPENAI_OAUTH_CLIENT_ID.");
+  }
+}
+
 export async function resolveReusableOpenAIOAuthClientId(input: {
   readonly env?: NodeJS.ProcessEnv;
   readonly authPaths?: readonly string[];
@@ -417,6 +439,8 @@ export async function completeOpenAICodexDeviceLogin(input: {
     fetch: input.fetch,
   });
 
+  assertModelRequestScope(tokens.accessToken);
+
   await (input.writeCredentials ?? writeOpenAICredentials)({
     credentialsPath: input.credentialsPath,
     credentials: {
@@ -467,6 +491,8 @@ export async function completeOpenAIDeviceLogin(input: {
     fetch: input.fetch,
   });
 
+  assertModelRequestScope(tokens.accessToken);
+
   await (input.writeCredentials ?? writeOpenAICredentials)({
     credentialsPath: input.credentialsPath,
     credentials: {
@@ -511,6 +537,8 @@ export async function completeOpenAIBrowserLogin(input: {
     baseUrl: input.baseUrl,
     fetch: input.fetch,
   });
+
+  assertModelRequestScope(tokens.accessToken);
 
   await (input.writeCredentials ?? writeOpenAICredentials)({
     credentialsPath: input.credentialsPath,

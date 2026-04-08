@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { withWorkCwd } from "../../apps/unclecode-cli/src/program.ts";
+import { withWorkCwd } from "../../apps/unclecode-cli/src/work-bootstrap.ts";
 
 test("withWorkCwd injects caller cwd when none is present", () => {
   assert.deepEqual(withWorkCwd(["--tools"], "/tmp/project-a"), ["--cwd", "/tmp/project-a", "--tools"]);

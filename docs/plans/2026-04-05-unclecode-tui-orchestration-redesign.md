@@ -1202,9 +1202,31 @@
 - Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
 - Modify: `.sisyphus/evidence/*`
 
-- [ ] Step 1: Add failing source/behavior coverage that requires `launchSessionCenter(...)` ownership to live in `session-center-launcher.ts` instead of `interactive-shell.ts`.
-- [ ] Step 2: Extract `launchSessionCenter(...)` into `session-center-launcher.ts` and cut `interactive-shell.ts` / `program.ts` / internal tests over to the owner seam without behavior changes.
-- [ ] Step 3: Re-run targeted contract/work coverage before full verification.
+- [x] Step 1: Add failing source/behavior coverage that requires `launchSessionCenter(...)` ownership to live in `session-center-launcher.ts` instead of `interactive-shell.ts`.
+- [x] Step 2: Extract `launchSessionCenter(...)` into `session-center-launcher.ts` and cut `interactive-shell.ts` / `program.ts` / internal tests over to the owner seam without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 91: Extend guardian shell/bootstrap narrowing to the new app bootstrap seams
+**Files:**
+- Modify: `apps/unclecode-cli/src/guardian-checks.ts`
+- Modify: `tests/work/guardian-checks.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing guardian coverage that requires `session-center-launcher.ts`, `interactive-launch-inputs.ts`, and `work-bootstrap.ts` to trigger the same contract/command subsets as the old interactive-shell bootstrap seam.
+- [x] Step 2: Extend guardian targeted-script inference to include the new app bootstrap seams.
+- [x] Step 3: Re-run targeted guardian coverage before full verification.
+
+### Task 92: Delete the obsolete interactive-shell router shim
+**Files:**
+- Delete: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `apps/unclecode-cli/src/guardian-checks.ts`
+- Modify: `tests/work/guardian-checks.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [ ] Step 1: Add failing contract coverage that flips `interactive-shell.ts` from a thin-router expectation to a file-absence expectation, while preserving owner-seam assertions on the surviving bootstrap modules.
+- [ ] Step 2: Delete `interactive-shell.ts` and remove any residual guardian/bootstrap references that still treat it as a live app seam.
+- [ ] Step 3: Re-run targeted contract/guardian coverage before full verification.
 
 ## Verification
 

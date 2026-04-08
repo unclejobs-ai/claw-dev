@@ -12,7 +12,7 @@ async function main(): Promise<void> {
       stdoutIsTTY: process.stdout.isTTY ?? false,
     })
   ) {
-    await (await import("./interactive-shell.js")).launchWorkEntrypoint([]);
+    await (await import("./work-bootstrap.js")).launchWorkEntrypoint([]);
     return;
   }
 

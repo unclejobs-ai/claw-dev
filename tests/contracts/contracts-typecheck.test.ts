@@ -5,11 +5,19 @@ import type {
   ProviderId as CanonicalProviderId,
   JsonObject,
   JsonValue,
+  OpenEmbeddedWorkSession,
   SessionMetadata,
   SessionPendingAction,
 } from "@unclecode/contracts";
 import type { PolicyDecision as PolicyEngineDecision } from "@unclecode/policy-engine";
 import type { ProviderId as PackageProviderId } from "@unclecode/providers";
+import type {
+  DashboardProps,
+  EmbeddedWorkPaneRenderOptions,
+  TuiRenderOptions,
+  TuiShellHomeState,
+} from "@unclecode/tui";
+import { createSessionCenterDashboardRenderOptions } from "@unclecode/tui";
 
 type Assert<T extends true> = T;
 type IsExact<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
@@ -41,6 +49,27 @@ type PendingActionInputIsJsonObject = Assert<
 >;
 type PostTurnSummaryIsJsonValue = ExtendsJsonValue<
   NonNullable<SessionMetadata["postTurnSummary"]>
+>;
+type TuiEmbeddedControllerMatchesSharedContract = Assert<
+  IsExact<
+    NonNullable<TuiRenderOptions<TuiShellHomeState>["openEmbeddedWorkSession"]>,
+    OpenEmbeddedWorkSession<TuiShellHomeState>
+  >
+>;
+type DashboardPropsDeriveFromSharedRenderOptions = Assert<
+  IsExact<DashboardProps["workspaceRoot"], string>
+>;
+type DashboardOptionalAuthMatchesRenderOptions = Assert<
+  IsExact<
+    DashboardProps["authLabel"],
+    TuiRenderOptions<TuiShellHomeState>["authLabel"]
+  >
+>;
+type EmbeddedWorkPaneOptionsCarrySharedControllerType = Assert<
+  IsExact<
+    EmbeddedWorkPaneRenderOptions<TuiShellHomeState>["openEmbeddedWorkSession"],
+    TuiRenderOptions<TuiShellHomeState>["openEmbeddedWorkSession"]
+  >
 >;
 
 const pendingActionInput: JsonObject = {
@@ -75,3 +104,30 @@ void (null as unknown as ToolTrustZoneMatchesMetadata);
 void (null as unknown as McpTrustZoneMatchesMetadata);
 void (null as unknown as PendingActionInputIsJsonObject);
 void (null as unknown as PostTurnSummaryIsJsonValue);
+void (null as unknown as TuiEmbeddedControllerMatchesSharedContract);
+void (null as unknown as DashboardPropsDeriveFromSharedRenderOptions);
+void (null as unknown as DashboardOptionalAuthMatchesRenderOptions);
+void (null as unknown as EmbeddedWorkPaneOptionsCarrySharedControllerType);
+
+const sessionCenterRenderOptions = createSessionCenterDashboardRenderOptions({
+  workspaceRoot: "/tmp/typecheck",
+  homeState: {
+    modeLabel: "default",
+    authLabel: "none",
+    sessionCount: 0,
+    mcpServerCount: 0,
+    mcpServers: [],
+    latestResearchSessionId: null,
+    latestResearchSummary: null,
+    latestResearchTimestamp: null,
+    researchRunCount: 0,
+    sessions: [],
+    bridgeLines: [],
+    memoryLines: [],
+  } satisfies TuiShellHomeState,
+  contextLines: [],
+});
+
+const sessionCenterRenderOptionsWorkspaceRoot: string =
+  sessionCenterRenderOptions.workspaceRoot ?? "";
+void sessionCenterRenderOptionsWorkspaceRoot;
