@@ -1,3 +1,7 @@
+import { createWorkShellBusyStatePatch } from "./work-shell-engine-state.js";
+import type { WorkShellChatEntry, WorkShellEngineState } from "./work-shell-engine.js";
+import type { WorkShellReasoningConfig } from "./reasoning.js";
+
 export function resolveBusyStatusFromTraceEvent(
   event: { readonly type: string; readonly status?: string },
   line: string,
@@ -28,4 +32,41 @@ export function extractCurrentTurnStartedAt(event: { readonly type: string; read
   return event.type === "turn.started" && typeof event.startedAt === "number"
     ? event.startedAt
     : undefined;
+}
+
+export function createTraceEventBusyPatch<Reasoning extends WorkShellReasoningConfig>(input: {
+  state: WorkShellEngineState<Reasoning>;
+  event: { readonly type: string; readonly status?: string; readonly startedAt?: unknown };
+  line: string;
+}): Partial<WorkShellEngineState<Reasoning>> | undefined {
+  const busyStatus = resolveBusyStatusFromTraceEvent(input.event, input.line);
+  if (busyStatus === null) {
+    return undefined;
+  }
+
+  const currentTurnStartedAt = extractCurrentTurnStartedAt(input.event);
+  return createWorkShellBusyStatePatch({
+    state: input.state,
+    isBusy: input.state.isBusy,
+    ...(busyStatus ? { busyStatus } : {}),
+    ...(currentTurnStartedAt !== undefined ? { currentTurnStartedAt } : {}),
+    ...(input.event.type === "turn.completed"
+      ? { clearCurrentTurnStartedAt: true }
+      : {}),
+  });
+}
+
+export function resolveVerboseTraceEntry(input: {
+  traceMode: "minimal" | "verbose";
+  event: { readonly type: string };
+  line: string;
+}): WorkShellChatEntry | undefined {
+  if (input.traceMode !== "verbose" || !input.line) {
+    return undefined;
+  }
+
+  return {
+    role: resolveTraceEntryRole(input.event),
+    text: input.line,
+  };
 }

@@ -30,9 +30,11 @@ import * as WorkShellOperations from "./work-shell-engine-operations.js";
 import {
   createCollapsedContextPanel,
   createRecentSessionsLoadingPanel,
-  createRecentSessionsPanel,
   createSensitiveInputCancelResult,
   createWorkShellStatusPanel,
+  createWorkspaceReloadCompleteEntry,
+  createWorkspaceReloadEntries,
+  loadRecentSessionsPanel,
 } from "./work-shell-engine-panels.js";
 import * as WorkShellTurns from "./work-shell-engine-turns.js";
 import {
@@ -43,14 +45,12 @@ import {
   appendWorkShellEntries,
   createInitialWorkShellEngineState,
   createWorkShellAuthStatePatch,
-  createWorkShellBusyStatePatch,
   createWorkShellTraceLinePatch,
   createWorkShellTraceModePatch,
 } from "./work-shell-engine-state.js";
 import {
-  extractCurrentTurnStartedAt,
-  resolveBusyStatusFromTraceEvent,
-  resolveTraceEntryRole,
+  createTraceEventBusyPatch,
+  resolveVerboseTraceEntry,
 } from "./work-shell-engine-trace.js";
 import type { WorkShellReasoningConfig } from "./reasoning.js";
 
@@ -416,8 +416,10 @@ export class WorkShellEngine<
 
   async openSessionsPanel(): Promise<void> {
     this.setState({ panel: createRecentSessionsLoadingPanel() });
-    const lines = await this.listSessionLines(this.options.cwd);
-    this.setState({ panel: createRecentSessionsPanel(lines) });
+    this.setState({ panel: await loadRecentSessionsPanel({
+      cwd: this.options.cwd,
+      listSessionLines: this.listSessionLines,
+    }) });
   }
 
   cancelSensitiveInput(): void {
@@ -543,12 +545,9 @@ export class WorkShellEngine<
           return;
         }
         case "reload":
-          this.appendEntries(
-            { role: "user", text: line },
-            { role: "system", text: "Reloading workspace context…" },
-          );
+          this.appendEntries(...createWorkspaceReloadEntries(line));
           await this.reloadContextState();
-          this.appendEntries({ role: "system", text: "Workspace context reloaded." });
+          this.appendEntries(createWorkspaceReloadCompleteEntry());
           return;
         case "status": {
           const result = createStatusBuiltinResult({
@@ -869,32 +868,25 @@ export class WorkShellEngine<
 
   private async handleTraceEvent(event: TraceEvent): Promise<void> {
     const line = this.formatAgentTraceLine(event);
-    const busyStatus = resolveBusyStatusFromTraceEvent(event, line);
-    if (busyStatus !== null) {
-      const currentTurnStartedAt = extractCurrentTurnStartedAt(
-        event as { readonly type: string; readonly startedAt?: unknown },
-      );
-      this.setState(createWorkShellBusyStatePatch({
-        state: this.state,
-        isBusy: this.state.isBusy,
-        ...(busyStatus ? { busyStatus } : {}),
-        ...(currentTurnStartedAt !== undefined ? { currentTurnStartedAt } : {}),
-        ...(event.type === "turn.completed"
-          ? { clearCurrentTurnStartedAt: true }
-          : {}),
-      }));
+    const busyPatch = createTraceEventBusyPatch({
+      state: this.state,
+      event: event as { readonly type: string; readonly status?: string; readonly startedAt?: unknown },
+      line,
+    });
+    if (busyPatch) {
+      this.setState(busyPatch);
     }
 
-    if (this.state.traceMode !== "verbose") {
+    const traceEntry = resolveVerboseTraceEntry({
+      traceMode: this.state.traceMode,
+      event,
+      line,
+    });
+    if (!traceEntry) {
       return;
     }
 
-    if (!line) {
-      return;
-    }
-
-    const role = resolveTraceEntryRole(event);
-    this.appendEntries({ role, text: line });
+    this.appendEntries(traceEntry);
     this.pushTraceLine(line);
   }
 

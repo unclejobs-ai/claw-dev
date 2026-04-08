@@ -56,6 +56,9 @@ import {
   createRecentSessionsPanel,
   createSensitiveInputCancelResult,
   createWorkShellStatusPanel,
+  createWorkspaceReloadCompleteEntry,
+  createWorkspaceReloadEntries,
+  loadRecentSessionsPanel,
 } from "../../packages/orchestrator/src/work-shell-engine-panels.ts";
 import {
   createWorkShellSessionSnapshotInput,
@@ -67,9 +70,11 @@ import {
   runWorkShellPostTurnSuccessEffects,
 } from "../../packages/orchestrator/src/work-shell-engine-post-turns.ts";
 import {
+  createTraceEventBusyPatch,
   extractCurrentTurnStartedAt,
   resolveBusyStatusFromTraceEvent,
   resolveTraceEntryRole,
+  resolveVerboseTraceEntry,
 } from "../../packages/orchestrator/src/work-shell-engine-trace.ts";
 import {
   buildPermissionStallContinuePrompt,
@@ -522,7 +527,7 @@ test("work-shell turn helpers build summaries and permission-stall continuations
   );
 });
 
-test("work-shell panel helpers assemble collapsed context, session panels, and cancel/status views", () => {
+test("work-shell panel helpers assemble collapsed context, session panels, reload entries, and cancel/status views", async () => {
   const options = {
     provider: "openai",
     model: "gpt-5.4",
@@ -550,6 +555,26 @@ test("work-shell panel helpers assemble collapsed context, session panels, and c
   assert.deepEqual(createRecentSessionsPanel(["session-1"]), {
     title: "Recent sessions",
     lines: ["session-1"],
+  });
+  assert.deepEqual(
+    await loadRecentSessionsPanel({
+      cwd: "/repo",
+      async listSessionLines() {
+        return ["session-2"];
+      },
+    }),
+    {
+      title: "Recent sessions",
+      lines: ["session-2"],
+    },
+  );
+  assert.deepEqual(createWorkspaceReloadEntries("/reload"), [
+    { role: "user", text: "/reload" },
+    { role: "system", text: "Reloading workspace context…" },
+  ]);
+  assert.deepEqual(createWorkspaceReloadCompleteEntry(), {
+    role: "system",
+    text: "Workspace context reloaded.",
   });
   assert.deepEqual(createWorkShellStatusPanel({
     options,
@@ -772,7 +797,7 @@ test("work-shell post-turn helpers persist summaries and auth recovery determini
   assert.deepEqual(refreshedAuthIssues, ["Auth issue: saved OAuth needs refresh."]);
 });
 
-test("work-shell trace helpers derive busy status and transcript roles honestly", () => {
+test("work-shell trace helpers derive busy status, state patches, and transcript roles honestly", () => {
   assert.equal(
     resolveBusyStatusFromTraceEvent({ type: "turn.started" }, "thinking inspect repo"),
     "thinking inspect repo",
@@ -783,6 +808,35 @@ test("work-shell trace helpers derive busy status and transcript roles honestly"
   );
   assert.equal(
     resolveBusyStatusFromTraceEvent({ type: "turn.completed" }, "done 123"),
+    undefined,
+  );
+  const state = createState({ isBusy: true, currentTurnStartedAt: 10 });
+  assert.deepEqual(
+    createTraceEventBusyPatch({
+      state,
+      event: { type: "turn.started", startedAt: 42 },
+      line: "thinking inspect repo",
+    }),
+    {
+      isBusy: true,
+      busyStatus: "thinking inspect repo",
+      currentTurnStartedAt: 42,
+    },
+  );
+  assert.deepEqual(
+    resolveVerboseTraceEntry({
+      traceMode: "verbose",
+      event: { type: "provider.calling" },
+      line: "calling openai gpt-5.4",
+    }),
+    { role: "tool", text: "calling openai gpt-5.4" },
+  );
+  assert.equal(
+    resolveVerboseTraceEntry({
+      traceMode: "minimal",
+      event: { type: "provider.calling" },
+      line: "calling openai gpt-5.4",
+    }),
     undefined,
   );
   assert.equal(resolveTraceEntryRole({ type: "turn.started" }), "system");

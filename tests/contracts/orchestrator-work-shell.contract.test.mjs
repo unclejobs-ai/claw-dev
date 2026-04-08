@@ -54,6 +54,9 @@ test("work-shell helper owner files expose the builtin, execution, operational, 
   assert.match(panelsSource, /export function createCollapsedContextPanel/);
   assert.match(panelsSource, /export function createRecentSessionsLoadingPanel/);
   assert.match(panelsSource, /export function createRecentSessionsPanel/);
+  assert.match(panelsSource, /export async function loadRecentSessionsPanel/);
+  assert.match(panelsSource, /export function createWorkspaceReloadEntries/);
+  assert.match(panelsSource, /export function createWorkspaceReloadCompleteEntry/);
   assert.match(panelsSource, /export function createWorkShellStatusPanel/);
   assert.match(panelsSource, /export function createSensitiveInputCancelResult/);
 
@@ -67,4 +70,6 @@ test("work-shell helper owner files expose the builtin, execution, operational, 
 
   assert.match(turnsSource, /export async function finalizeWorkShellAssistantReply/);
   assert.match(traceSource, /export function resolveBusyStatusFromTraceEvent/);
+  assert.match(traceSource, /export function createTraceEventBusyPatch/);
+  assert.match(traceSource, /export function resolveVerboseTraceEntry/);
 });

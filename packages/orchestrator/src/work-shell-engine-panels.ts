@@ -41,6 +41,24 @@ export function createRecentSessionsPanel(lines: readonly string[]): WorkShellPa
   };
 }
 
+export async function loadRecentSessionsPanel(input: {
+  cwd: string;
+  listSessionLines: (cwd: string) => Promise<readonly string[]>;
+}): Promise<WorkShellPanel> {
+  return createRecentSessionsPanel(await input.listSessionLines(input.cwd));
+}
+
+export function createWorkspaceReloadEntries(line: string): readonly WorkShellChatEntry[] {
+  return [
+    { role: "user", text: line },
+    { role: "system", text: "Reloading workspace context…" },
+  ];
+}
+
+export function createWorkspaceReloadCompleteEntry(): WorkShellChatEntry {
+  return { role: "system", text: "Workspace context reloaded." };
+}
+
 export function createWorkShellStatusPanel<Reasoning extends WorkShellReasoningConfig>(input: {
   options: WorkShellEngineOptions<Reasoning>;
   stateModel: string;
