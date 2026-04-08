@@ -17,10 +17,9 @@ test("context-broker workspace-skill helpers discover metadata and load content"
   mkdirSync(path.join(cwd, ".codex", "skills", "analyze"), {
     recursive: true,
   });
-  mkdirSync(
-    path.join(home, ".agents", "skills", "superpowers", "brainstorming"),
-    { recursive: true },
-  );
+  mkdirSync(path.join(home, ".agents", "skills", "brainstorming"), {
+    recursive: true,
+  });
 
   writeFileSync(
     path.join(cwd, ".codex", "skills", "analyze", "SKILL.md"),
@@ -28,14 +27,7 @@ test("context-broker workspace-skill helpers discover metadata and load content"
     "utf8",
   );
   writeFileSync(
-    path.join(
-      home,
-      ".agents",
-      "skills",
-      "superpowers",
-      "brainstorming",
-      "SKILL.md",
-    ),
+    path.join(home, ".agents", "skills", "brainstorming", "SKILL.md"),
     "# Brainstorming\nExplore designs before implementation.\n",
     "utf8",
   );
@@ -61,4 +53,25 @@ test("context-broker workspace-skill helpers discover metadata and load content"
   );
   assert.equal(loaded.name, "brainstorming");
   assert.match(loaded.content, /Explore designs/);
+});
+
+test("context-broker workspace-skill helpers ignore legacy superpowers skills", async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "unclecode-context-broker-skills-"));
+  const home = path.join(cwd, "home");
+
+  mkdirSync(path.join(home, ".agents", "skills", "superpowers", "using-superpowers"), {
+    recursive: true,
+  });
+  writeFileSync(
+    path.join(home, ".agents", "skills", "superpowers", "using-superpowers", "SKILL.md"),
+    "# Using Superpowers\nMandatory meta skill.\n",
+    "utf8",
+  );
+
+  const metadata = await discoverSkillMetadata(cwd, home);
+  const skills = await listAvailableSkills(cwd, home);
+
+  assert.ok(metadata.every((skill) => skill.name !== "using-superpowers"));
+  assert.ok(skills.every((skill) => skill.name !== "using-superpowers"));
+  await assert.rejects(() => loadNamedSkill("using-superpowers", cwd, home), /Skill not found/);
 });

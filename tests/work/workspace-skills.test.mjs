@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { discoverSkillMetadata } from "../../src/workspace-skills.ts";
+import { discoverSkillMetadata } from "@unclecode/context-broker";
 
 test("discoverSkillMetadata reads skill frontmatter before full content loading", async () => {
   const cwd = mkdtempSync(path.join(tmpdir(), "unclecode-skill-meta-"));
   const home = path.join(cwd, "home");
 
   mkdirSync(path.join(cwd, ".codex", "skills", "analyze"), { recursive: true });
-  mkdirSync(path.join(home, ".agents", "skills", "superpowers", "brainstorming"), { recursive: true });
+  mkdirSync(path.join(home, ".agents", "skills", "brainstorming"), { recursive: true });
 
   writeFileSync(
     path.join(cwd, ".codex", "skills", "analyze", "SKILL.md"),
@@ -19,7 +19,7 @@ test("discoverSkillMetadata reads skill frontmatter before full content loading"
     "utf8",
   );
   writeFileSync(
-    path.join(home, ".agents", "skills", "superpowers", "brainstorming", "SKILL.md"),
+    path.join(home, ".agents", "skills", "brainstorming", "SKILL.md"),
     "# Brainstorming\nExplore designs before implementation.\n",
     "utf8",
   );
@@ -42,4 +42,20 @@ test("discoverSkillMetadata reads skill frontmatter before full content loading"
         /Explore designs/.test(skill.description),
     ),
   );
+});
+
+test("discoverSkillMetadata ignores legacy superpowers directory", async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "unclecode-skill-meta-"));
+  const home = path.join(cwd, "home");
+
+  mkdirSync(path.join(home, ".agents", "skills", "superpowers", "using-superpowers"), { recursive: true });
+  writeFileSync(
+    path.join(home, ".agents", "skills", "superpowers", "using-superpowers", "SKILL.md"),
+    "# Using Superpowers\nMandatory meta skill.\n",
+    "utf8",
+  );
+
+  const skills = await discoverSkillMetadata(cwd, home);
+
+  assert.ok(skills.every((skill) => skill.name !== "using-superpowers"));
 });

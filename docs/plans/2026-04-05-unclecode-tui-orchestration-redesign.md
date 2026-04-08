@@ -1,6 +1,6 @@
 # UncleCode TUI + Orchestration Redesign Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement this plan with the repo's standard execution workflow. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Execute the 2026-04-05 TUI/orchestration redesign incrementally without breaking the current `unclecode` surfaces.
 
@@ -29,7 +29,7 @@
 
 ### Task 2: Prepare cutover evidence
 **Files:**
-- Modify: `docs/superpowers/specs/2026-04-05-unclecode-tui-orchestration-redesign.md` (only if migration notes must be clarified)
+- Modify: `docs/specs/2026-04-05-unclecode-tui-orchestration-redesign.md` (only if migration notes must be clarified)
 - Add/Modify: `.sisyphus/evidence/*` (optional evidence notes)
 
 - [x] Step 1: Record the current spawn/call-site boundaries that still block single-process unification.
@@ -792,6 +792,419 @@
 - [x] Step 1: Add failing contract coverage that flips root agent/provider shims from thin-wrapper expectations into absence checks.
 - [x] Step 2: Delete the obsolete root agent/provider compatibility source/declaration files now that repo-internal code, declarations, and packaging no longer depend on them.
 - [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 56: Delete obsolete root cli compatibility surfaces
+**Files:**
+- Delete: `src/cli.tsx`
+- Delete: `src/cli.d.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `tests/work/repl.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that flips the old root cli compat shim expectations into absence checks while preserving app/package seam verification.
+- [x] Step 2: Delete `src/cli.tsx` and `src/cli.d.ts` once contract-only references are replaced by owner-seam checks.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 57: Delete obsolete root utility compatibility shims
+**Files:**
+- Delete: `src/composer.tsx`
+- Delete: `src/composer.d.ts`
+- Delete: `src/config.ts`
+- Delete: `src/config.d.ts`
+- Delete: `src/context-memory.ts`
+- Delete: `src/context-memory.d.ts`
+- Delete: `src/session-store-paths.ts`
+- Delete: `src/session-store-paths.d.ts`
+- Delete: `src/tools.ts`
+- Delete: `src/tools.d.ts`
+- Delete: `src/work-agent.ts`
+- Delete: `src/work-agent.d.ts`
+- Delete: `src/workspace-skills.ts`
+- Delete: `src/workspace-skills.d.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `tests/work/composer.test.mjs`
+- Modify: `tests/work/context-memory.test.mjs`
+- Modify: `tests/work/tools.test.mjs`
+- Modify: `tests/work/work-agent.test.mjs`
+- Modify: `tests/work/workspace-skills.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Move remaining repo-internal behavioral tests from root utility shims to owner package seams.
+- [x] Step 2: Flip contract/declaration coverage for those root utility shims into absence checks and delete the obsolete source/declaration files.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 58: Delete the final root workspace-guidance compatibility shim
+**Files:**
+- Delete: `src/workspace-guidance.ts`
+- Delete: `src/workspace-guidance.d.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `tests/work/workspace-guidance.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Move workspace-guidance behavioral coverage to the shared `@unclecode/context-broker` cached-guidance seam.
+- [x] Step 2: Flip the remaining root guidance shim/declaration expectations into absence checks and delete the obsolete wrapper.
+- [x] Step 3: Re-run targeted contract/work/integration coverage before full verification.
+
+### Task 59: Prefer same-tree embedded work navigation over session-center handoff
+**Files:**
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/tui-dashboard.contract.test.mjs`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing coverage that locks Dashboard navigation to prefer embedded work-pane updates over exit-and-relaunch handoff when an embedded controller is available.
+- [x] Step 2: Add a mutable embedded work-pane controller in the interactive bootstrap and route `W Work` / `work-*` session selection through same-tree work view updates before falling back to launch handoff.
+- [x] Step 2a: Make interactive `resume work-*` open directly into the embedded work view instead of landing on the sessions tab first.
+- [x] Step 2b: When an embedded work session switch selects a different `work-*` session, refresh home state and retarget session-list focus to that session.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 60: Make guardian targeted-test selection contract-aware for public shell boundaries
+**Files:**
+- Modify: `apps/unclecode-cli/src/guardian-checks.ts`
+- Modify: `tests/work/guardian-checks.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing tests that lock guardian narrowing to include `test:contracts` when public shell/bootstrap boundary files change.
+- [x] Step 2: Upgrade targeted test-script resolution from single-script mapping to multi-script mapping so package/app boundary files can trigger both their local subset and the contract subset.
+- [x] Step 3: Re-run targeted guardian coverage before full verification.
+
+### Task 61: Eliminate the last root `src/` residue entirely
+**Files:**
+- Move: `src/anthropicCompatProxy.ts` → `scripts/anthropic-compat-proxy.ts`
+- Delete: `src/types.ts`
+- Remove empty root `src/` directory
+- Modify: `README.md`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that flips the last root `src/` residue from tolerated leftovers into removal/relocation expectations.
+- [x] Step 2: Move the standalone anthropic compat proxy out of the runtime root, delete the unused `src/types.ts`, and remove the empty root `src/` directory.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 62: Sync embedded work context and contract-aware guardian coverage more tightly
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `apps/unclecode-cli/src/guardian-checks.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `tests/work/guardian-checks.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Make the interactive embedded-work controller return the latest context lines so Dashboard can keep inspector context in sync across embedded work-session switches, and seed initial embedded context lines when the shell opens directly into a work session.
+- [x] Step 2: Extend guardian contract-aware narrowing from shell files alone to public package barrel/index seams that materially affect owner-boundary contracts.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 63: Carry embedded work home-state patches through the same-tree controller
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Upgrade the embedded work controller result from context-only updates to richer updates that can carry home-state patches from work dashboard props.
+- [x] Step 2: Teach Dashboard to consume those embedded home-state patches directly before falling back to `refreshHomeState()`, reducing the remaining bridge-style refresh dependency.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 64: Let the embedded work controller carry selected-session identity too
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Extend the embedded controller update payload to include `selectedSessionId` so the work-side controller, not the Dashboard, is the primary source of truth for which embedded session just loaded.
+- [x] Step 2: Make Dashboard consume the controller-provided selected session id first and only fall back to argv parsing if needed.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 65: Surface device-OAuth progress and user code in the work-shell auth panel
+**Files:**
+- Modify: `packages/orchestrator/src/work-shell-engine.ts`
+- Modify: `packages/orchestrator/src/work-shell-inline-command.ts`
+- Modify: `apps/unclecode-cli/src/work-runtime.ts`
+- Modify: `tests/orchestrator/work-shell-engine.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing engine coverage that locks `/auth login` pending UI to show device-flow progress lines like the user code instead of only saying “Check the browser window.”
+- [x] Step 2: Thread inline-command progress callbacks through the orchestrator/runtime seam so operational device/browser auth progress reaches the work-shell panel while the command is still running.
+- [x] Step 3: Re-run targeted orchestrator/work coverage before full verification.
+
+### Task 66: Formalize embedded work controller parsing/update helpers in a shared contract seam
+**Files:**
+- Add: `packages/contracts/src/tui.ts`
+- Modify: `packages/contracts/src/index.ts`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `tests/contracts/tui-dashboard.contract.test.mjs`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that locks selected-session parsing and embedded update assembly behind a shared package seam instead of local duplicated helpers.
+- [x] Step 2: Move `parseSelectedSessionIdFromArgs(...)`, `buildEmbeddedWorkSessionUpdate(...)`, and the shared update/controller types into `@unclecode/contracts`.
+- [x] Step 3: Cut both the app bootstrap and Dashboard shell over to the shared helpers and remove the local interactive-shell parser/update helpers.
+- [x] Step 4: Re-run targeted contract/work coverage before full verification.
+
+### Task 67: Extend guardian impact inference for shared TUI controller contracts
+**Files:**
+- Modify: `apps/unclecode-cli/src/guardian-checks.ts`
+- Modify: `tests/work/guardian-checks.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing guardian coverage that locks `packages/contracts/src/tui.ts` to both `test:contracts` and `test:tui` because it is a shared controller contract, not a contracts-only surface.
+- [x] Step 2: Extend the changed-file mapping with the narrow shared-TUI-contract special case instead of broadening all contracts changes.
+- [x] Step 3: Re-run targeted guardian coverage before full verification.
+
+### Task 68: Export shared generic TUI render options and remove app-local session-center render typing
+**Files:**
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/contracts-typecheck.test.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing type/source contracts that require `@unclecode/tui` to export a shared `TuiRenderOptions<...>` seam and require `interactive-shell.ts` to consume it instead of maintaining a local `SessionCenterRenderOptions` object type.
+- [x] Step 2: Export the generic `TuiRenderOptions<HomeState>` type from the TUI package, reusing the shared embedded-controller contract while allowing richer app-owned home/session state shapes.
+- [x] Step 3: Cut the interactive bootstrap over to the shared TUI render-options seam and keep the build green under `exactOptionalPropertyTypes`.
+- [x] Step 4: Re-run targeted contract/type coverage before full verification.
+
+### Task 69: Make embedded dashboard helper returns use the shared `TuiRenderOptions` seam too
+**Files:**
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `tests/contracts/tui-dashboard.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that locks embedded dashboard helpers to `TuiRenderOptions<TuiShellHomeState>` instead of `React.ComponentProps<typeof Dashboard>`.
+- [x] Step 2: Cut `createEmbeddedWorkShellDashboardProps(...)`, `createEmbeddedWorkShellPaneDashboardProps(...)`, `createManagedWorkShellDashboardProps(...)`, and `renderEmbeddedWorkShellPaneDashboard(...)` over to the shared render seam.
+- [x] Step 3: Re-run targeted contract/type coverage before full verification.
+
+### Task 70: Deduplicate Dashboard render entry assembly behind a shared helper
+**Files:**
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `tests/contracts/tui-dashboard.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that locks `renderEmbeddedWorkShellPaneDashboard(...)` and `renderTui(...)` onto one shared Dashboard element builder.
+- [x] Step 2: Extract the shared Dashboard element builder and cut both render entrypoints over to it without changing behavior.
+- [x] Step 3: Re-run targeted contract/type coverage before full verification.
+
+### Task 71: Formalize embedded work dashboard snapshots as a shared TUI seam
+**Files:**
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `apps/unclecode-cli/src/work-runtime.ts`
+- Modify: `tests/contracts/tui-dashboard.contract.test.mjs`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires a shared `EmbeddedWorkDashboardSnapshot<HomeState>` export in `@unclecode/tui` and requires app-owned interactive/runtime seams to consume it instead of maintaining a local `Pick<TuiRenderOptions<...>, ...>` snapshot type.
+- [x] Step 2: Export the shared snapshot alias from the TUI package and cut `interactive-shell.ts` plus `work-runtime.ts` over to it.
+- [x] Step 3: Re-run targeted contract/type/work coverage before full verification.
+
+### Task 72: Move embedded-work pane render-option assembly behind shared TUI helpers
+**Files:**
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/contracts-typecheck.test.ts`
+- Modify: `tests/contracts/tui-dashboard.contract.test.mjs`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract/type coverage that requires shared `EmbeddedWorkPaneRenderOptions<HomeState>`, `extractEmbeddedHomeStatePatch(...)`, and `buildEmbeddedWorkPaneRenderOptions(...)` exports in `@unclecode/tui`, and requires `interactive-shell.ts` to consume them instead of keeping local embedded render-option assembly helpers.
+- [x] Step 2: Export the shared helper/type seam from the TUI package and cut `interactive-shell.ts` over to it.
+- [x] Step 3: Re-run targeted contract/type/work coverage before full verification.
+
+### Task 73: Move the mutable embedded work-pane controller bridge behind a shared TUI helper
+**Files:**
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/tui-dashboard.contract.test.mjs`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract/behavior coverage that requires a shared `createEmbeddedWorkPaneController(...)` helper in `@unclecode/tui` and requires `interactive-shell.ts` to stop owning the mutable embedded-pane controller state directly.
+- [x] Step 2: Export the shared helper from the TUI package and cut `interactive-shell.ts` over to it, letting the app bootstrap provide only the snapshot loader.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 74: Move session-center Dashboard option assembly behind a shared TUI helper
+**Files:**
+- Modify: `packages/tui/src/index.tsx`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/contracts-typecheck.test.ts`
+- Modify: `tests/contracts/tui-dashboard.contract.test.mjs`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract/type/behavior coverage that requires a shared `createSessionCenterDashboardRenderOptions(...)` helper in `@unclecode/tui` and requires `interactive-shell.ts` to stop inlining the large `renderShell({...})` object.
+- [x] Step 2: Export the shared helper from the TUI package and cut `interactive-shell.ts` over to it without changing session-center/work behavior.
+- [x] Step 3: Re-run targeted contract/type/work coverage before full verification.
+
+### Task 75: Move session-center runtime callback wiring behind an app helper seam
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `launchSessionCenter(...)` to build runtime callbacks through a dedicated helper instead of inlining `runAction`, `runSession`, and `launchWorkSession` closures inside the shared TUI render-option call.
+- [x] Step 2: Extract `createSessionCenterRuntimeCallbacks(...)` and cut `launchSessionCenter(...)` over to it without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 76: Move session-center dependency resolution behind an app helper seam
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `launchSessionCenter(...)` to resolve build/render/operational dependencies through a dedicated helper instead of keeping `operational`, `buildHomeState`, `renderShell`, `runAction`, and `runSession` setup inline.
+- [x] Step 2: Extract `resolveSessionCenterDependencies(...)` and cut `launchSessionCenter(...)` over to it without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 77: Move launchInteractiveSurface center-input normalization behind an app helper seam
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `launchInteractiveSurface(...)` to normalize center-mode input through a dedicated helper instead of inlining the `launchSessionCenter({...}, deps)` object.
+- [x] Step 2: Extract `createSessionCenterLaunchInput(...)` and cut `launchInteractiveSurface(...)` over to it without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 78: Move launchInteractiveSurface work-branch forwarding behind an app helper seam
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `launchInteractiveSurface(...)` to build work-branch forwarding input through a dedicated helper instead of inlining the `launchWorkEntrypoint(...)` options object.
+- [x] Step 2: Extract `createWorkLaunchInput(...)` and cut `launchInteractiveSurface(...)` over to it without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 79: Move session-center environment normalization behind an app helper seam
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `launchSessionCenter(...)` to normalize `workspaceRoot`, `env`, and `userHomeDir` through a dedicated helper instead of keeping the fallback assignments inline.
+- [x] Step 2: Extract `createSessionCenterEnvironment(...)` and cut `launchSessionCenter(...)` over to it without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 80: Move work-entry module loader fallback behind an app helper seam
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires work-entry consumers to resolve `loadWorkModule` through a dedicated helper instead of repeating inline `loadWorkEntrypointModule()` fallback lambdas.
+- [x] Step 2: Extract `resolveWorkModuleLoader(...)` and cut both `launchWorkEntrypoint(...)` and `loadEmbeddedWorkPane(...)` over to it without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 81: Move session-center home-state loader creation behind an app helper seam
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `launchSessionCenter(...)` to build its `createHomeState` closure through a dedicated helper instead of inlining the `buildHomeState({...})` callback.
+- [x] Step 2: Extract `createSessionCenterHomeStateLoader(...)` and cut `launchSessionCenter(...)` over to it without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 82: Move session-center render-input assembly behind an app helper seam
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `launchSessionCenter(...)` to build the app-owned `createSessionCenterDashboardRenderOptions(...)` input through a dedicated helper instead of inlining the large render-input object.
+- [x] Step 2: Extract `createSessionCenterRenderInput(...)` and cut `launchSessionCenter(...)` over to it without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 83: Move session-center runtime-callback input assembly behind an app helper seam
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `launchSessionCenter(...)` to build `createSessionCenterRuntimeCallbacks(...)` input through a dedicated helper instead of inlining the callback-input object.
+- [x] Step 2: Extract `createSessionCenterRuntimeCallbackInput(...)` and cut `launchSessionCenter(...)` over to it without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 84: Move embedded-work load input assembly behind an app helper seam
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `launchSessionCenter(...)` to build `loadEmbeddedWorkPane(...)` input through a dedicated helper instead of passing inline arguments.
+- [x] Step 2: Extract `createEmbeddedWorkPaneLoadInput(...)` and cut `launchSessionCenter(...)` plus `loadEmbeddedWorkPane(...)` over to it without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 85: Move session-center async render-input preparation behind an app helper seam
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `launchSessionCenter(...)` to delegate home-state loading, embedded-pane loading, callback assembly, and render-input assembly to a dedicated async helper instead of orchestrating those steps inline.
+- [x] Step 2: Extract `loadSessionCenterRenderInput(...)` and cut `launchSessionCenter(...)` over to it without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 86: Move session-center helper cluster into an app-owned support module
+**Files:**
+- Add: `apps/unclecode-cli/src/session-center-bootstrap.ts`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `interactive-shell.ts` to import session-center bootstrap helpers from an app-owned support module instead of defining the whole helper cluster inline.
+- [x] Step 2: Extract the session-center helper cluster into `session-center-bootstrap.ts` and cut `interactive-shell.ts` over to the imported helpers without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 87: Move work-entry and embedded-pane bridge helpers into an app-owned support module
+**Files:**
+- Add: `apps/unclecode-cli/src/work-bootstrap.ts`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `interactive-shell.ts` to import work-entry and embedded-pane bridge helpers from an app-owned support module instead of defining them inline.
+- [x] Step 2: Extract `withWorkCwd(...)`, work-entry loading/launch helpers, and embedded-work pane loading into `work-bootstrap.ts` and cut `interactive-shell.ts` over to imported ownership without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 88: Cut public work-launch ownership over to `work-bootstrap.ts`
+**Files:**
+- Modify: `apps/unclecode-cli/src/index.ts`
+- Modify: `apps/unclecode-cli/src/program.ts`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `tests/commands/work-forwarding.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source/behavior coverage that requires app startup and repo-internal tests to consume `work-bootstrap.ts` as the owner seam for work launch helpers instead of routing through `interactive-shell.ts`.
+- [x] Step 2: Cut `index.ts`, `program.ts`, and internal tests over to `work-bootstrap.ts`, leaving `interactive-shell.ts` focused on session-center and interactive-surface orchestration.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 89: Move interactive-surface input normalization behind an app support seam
+**Files:**
+- Add: `apps/unclecode-cli/src/interactive-launch-inputs.ts`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing source contract coverage that requires `interactive-shell.ts` to import interactive-surface input normalization helpers from an app support module instead of defining them inline.
+- [x] Step 2: Extract `SharedBootstrapDependencies`, `createWorkLaunchInput(...)`, and `createSessionCenterLaunchInput(...)` into `interactive-launch-inputs.ts` and cut `interactive-shell.ts` over without behavior changes.
+- [x] Step 3: Re-run targeted contract/work coverage before full verification.
+
+### Task 90: Move session-center launch orchestration into an app support seam
+**Files:**
+- Add: `apps/unclecode-cli/src/session-center-launcher.ts`
+- Modify: `apps/unclecode-cli/src/interactive-shell.ts`
+- Modify: `apps/unclecode-cli/src/program.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [ ] Step 1: Add failing source/behavior coverage that requires `launchSessionCenter(...)` ownership to live in `session-center-launcher.ts` instead of `interactive-shell.ts`.
+- [ ] Step 2: Extract `launchSessionCenter(...)` into `session-center-launcher.ts` and cut `interactive-shell.ts` / `program.ts` / internal tests over to the owner seam without behavior changes.
+- [ ] Step 3: Re-run targeted contract/work coverage before full verification.
 
 ## Verification
 

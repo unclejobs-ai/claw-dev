@@ -587,7 +587,7 @@ test("shouldBlockSlashSubmit guards partial slash commands from leaking to the m
   assert.equal(shouldBlockSlashSubmit("explain /auth"), false);
 });
 
-test("shared dashboard home-sync helpers stay available through src/cli.tsx", () => {
+test("shared dashboard home-sync helpers stay available through shared seams", () => {
   assert.deepEqual(
     createWorkShellDashboardHomePatch({
       authLabel: "api-key-env",
@@ -670,7 +670,7 @@ test("shouldRefreshDashboardHomeState reacts to completed work turns and home-st
   );
 });
 
-test("shared slash selection helpers stay available through src/cli.tsx", () => {
+test("shared slash selection helpers stay available through shared seams", () => {
   assert.equal(clampWorkShellSlashSelection(8, 0), 0);
   assert.equal(clampWorkShellSlashSelection(8, 3), 2);
   assert.equal(cycleWorkShellSlashSelection(0, 3, "previous"), 2);
@@ -687,7 +687,7 @@ test("shared slash selection helpers stay available through src/cli.tsx", () => 
   );
 });
 
-test("shared input decision helpers stay available through src/cli.tsx", () => {
+test("shared input decision helpers stay available through shared seams", () => {
   assert.deepEqual(
     resolveWorkShellInputAction({
       value: "",
@@ -1155,9 +1155,9 @@ test("listAvailableSkills includes project and global skills", async () => {
   const cwd = mkdtempSync(path.join(tmpdir(), "unclecode-skills-"));
   const home = path.join(cwd, "home");
   mkdirSync(path.join(cwd, ".codex", "skills", "analyze"), { recursive: true });
-  mkdirSync(path.join(home, ".agents", "skills", "superpowers", "brainstorming"), { recursive: true });
+  mkdirSync(path.join(home, ".agents", "skills", "brainstorming"), { recursive: true });
   writeFileSync(path.join(cwd, ".codex", "skills", "analyze", "SKILL.md"), "# Analyze\nProject skill\n", { encoding: "utf8", flag: "w" });
-  writeFileSync(path.join(home, ".agents", "skills", "superpowers", "brainstorming", "SKILL.md"), "# Brainstorming\nGlobal skill\n", { encoding: "utf8", flag: "w" });
+  writeFileSync(path.join(home, ".agents", "skills", "brainstorming", "SKILL.md"), "# Brainstorming\nGlobal skill\n", { encoding: "utf8", flag: "w" });
 
   const skills = await listAvailableSkills(cwd, home);
 
@@ -1165,18 +1165,30 @@ test("listAvailableSkills includes project and global skills", async () => {
   assert.ok(skills.some((skill) => skill.name === "brainstorming" && /Global skill/.test(skill.summary)));
 });
 
+test("listAvailableSkills ignores legacy superpowers skills", async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "unclecode-skills-"));
+  const home = path.join(cwd, "home");
+  mkdirSync(path.join(home, ".agents", "skills", "superpowers", "using-superpowers"), { recursive: true });
+  writeFileSync(path.join(home, ".agents", "skills", "superpowers", "using-superpowers", "SKILL.md"), "# Using Superpowers\nLegacy global meta skill\n", { encoding: "utf8", flag: "w" });
+
+  const skills = await listAvailableSkills(cwd, home);
+
+  assert.ok(skills.every((skill) => skill.name !== "using-superpowers"));
+});
+
 test("loadNamedSkill falls back from local codex skill path to global agents skills", async () => {
   const cwd = mkdtempSync(path.join(tmpdir(), "unclecode-skills-"));
   const home = path.join(cwd, "home");
-  mkdirSync(path.join(home, ".agents", "skills", "superpowers", "brainstorming"), { recursive: true });
-  writeFileSync(path.join(home, ".agents", "skills", "superpowers", "brainstorming", "SKILL.md"), "---\nname: brainstorming\n---\nGlobal skill\n", { encoding: "utf8", flag: "w" });
+  mkdirSync(path.join(home, ".agents", "skills", "brainstorming"), { recursive: true });
+  writeFileSync(path.join(home, ".agents", "skills", "brainstorming", "SKILL.md"), "---\nname: brainstorming\n---\nGlobal skill\n", { encoding: "utf8", flag: "w" });
 
   const result = await loadNamedSkill("brainstorming", cwd, home);
 
   assert.equal(result.name, "brainstorming");
   assert.match(result.content, /Global skill/);
   assert.ok(result.attempts.some((attempt) => /\.codex\/skills\/brainstorming\/SKILL\.md/.test(attempt.path)));
-  assert.ok(result.attempts.some((attempt) => /\.agents\/skills\/superpowers\/brainstorming\/SKILL\.md/.test(attempt.path) && attempt.ok));
+  assert.ok(result.attempts.some((attempt) => /\.agents\/skills\/brainstorming\/SKILL\.md/.test(attempt.path) && attempt.ok));
+  assert.ok(result.attempts.every((attempt) => !/\.agents\/skills\/superpowers\//.test(attempt.path)));
 });
 
 test("resolveWorkShellInlineCommand returns stderr lines instead of throwing", async () => {

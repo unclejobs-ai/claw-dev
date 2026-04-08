@@ -103,8 +103,12 @@ function candidateSkillPaths(
     path.join(cwd, ".codex", "skills", name, "SKILL.md"),
     path.join(homeDir, ".codex", "skills", name, "SKILL.md"),
     path.join(homeDir, ".agents", "skills", name, "SKILL.md"),
-    path.join(homeDir, ".agents", "skills", "superpowers", name, "SKILL.md"),
   ];
+}
+
+function isLegacySuperpowersSkillPath(filePath: string, homeDir: string): boolean {
+  const legacyRoot = path.join(homeDir, ".agents", "skills", "superpowers") + path.sep;
+  return filePath.startsWith(legacyRoot);
 }
 
 async function collectSkillFiles(
@@ -160,7 +164,11 @@ export async function discoverSkillMetadata(
   const userAgentFiles = await collectSkillFiles(path.join(homeDir, ".agents", "skills"));
 
   const deduped = new Map<string, WorkspaceSkillMetadata>();
-  for (const filePath of [...projectFiles, ...userCodexFiles, ...userAgentFiles]) {
+  for (const filePath of [
+    ...projectFiles,
+    ...userCodexFiles,
+    ...userAgentFiles.filter((entry) => !isLegacySuperpowersSkillPath(entry, homeDir)),
+  ]) {
     const inferredName = path.basename(path.dirname(filePath));
     if (!inferredName || deduped.has(inferredName)) {
       continue;

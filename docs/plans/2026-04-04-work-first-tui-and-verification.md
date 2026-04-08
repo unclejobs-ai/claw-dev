@@ -1,6 +1,6 @@
 # Work-First TUI and Verification Implementation Plan
 
-> **For agentic workers:** REQUIRED: Use superpowers:subagent-driven-development (if subagents available) or superpowers:executing-plans to implement this plan. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** Implement this plan with the repo's standard execution workflow. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make `unclecode` open directly into a responsive work composer, expose model-aware reasoning controls, and close the remaining verification gaps.
 
