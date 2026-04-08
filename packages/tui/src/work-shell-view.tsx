@@ -457,28 +457,29 @@ const WorkShellAttachmentBlock = React.memo(function WorkShellAttachmentBlock(pr
   );
 });
 
-export function WorkShellView(props: {
+const WorkShellHeaderBlock = React.memo(function WorkShellHeaderBlock(props: {
   readonly provider: string;
+  readonly headerHint?: string;
+}) {
+  return (
+    <Box justifyContent="space-between">
+      <Text bold>{formatWorkShellProviderTitle(props.provider)}</Text>
+      <Text color="gray">{props.headerHint ?? "Esc sessions · /auth · /model · /review"}</Text>
+    </Box>
+  );
+});
+
+const WorkShellStatusBlock = React.memo(function WorkShellStatusBlock(props: {
   readonly model: string;
   readonly reasoningLabel: string;
   readonly reasoningSupported: boolean;
   readonly mode: string;
   readonly authLabel: string;
-  readonly entries: readonly WorkShellEntry[];
   readonly isBusy: boolean;
   readonly busyStatus?: string;
-  readonly activePanel: WorkShellPanel;
   readonly currentTurnStartedAt?: number;
   readonly lastTurnDurationMs?: number;
-  readonly attachmentLines?: readonly string[];
-  readonly composer: React.ReactNode;
-  readonly inputValue: string;
-  readonly slashSuggestionCount: number;
-  readonly headerHint?: string;
-  readonly composerHintOverride?: string;
-  readonly terminalColumns?: number;
 }) {
-  const composerHint = props.composerHintOverride ?? getWorkShellComposerHint(props.inputValue, props.slashSuggestionCount);
   const [nowMs, setNowMs] = React.useState(() => Date.now());
   const statusLine = formatWorkShellStatusLine({
     model: props.model,
@@ -510,6 +511,36 @@ export function WorkShellView(props: {
     };
   }, [props.isBusy, props.currentTurnStartedAt]);
 
+  return (
+    <Box marginTop={1} borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column">
+      <Text color={props.reasoningSupported ? "white" : "yellow"}>{statusLine}</Text>
+      <Text color={props.isBusy ? "cyan" : "gray"}>{usageLine}</Text>
+    </Box>
+  );
+});
+
+export function WorkShellView(props: {
+  readonly provider: string;
+  readonly model: string;
+  readonly reasoningLabel: string;
+  readonly reasoningSupported: boolean;
+  readonly mode: string;
+  readonly authLabel: string;
+  readonly entries: readonly WorkShellEntry[];
+  readonly isBusy: boolean;
+  readonly busyStatus?: string;
+  readonly activePanel: WorkShellPanel;
+  readonly currentTurnStartedAt?: number;
+  readonly lastTurnDurationMs?: number;
+  readonly attachmentLines?: readonly string[];
+  readonly composer: React.ReactNode;
+  readonly inputValue: string;
+  readonly slashSuggestionCount: number;
+  readonly headerHint?: string;
+  readonly composerHintOverride?: string;
+  readonly terminalColumns?: number;
+}) {
+  const composerHint = props.composerHintOverride ?? getWorkShellComposerHint(props.inputValue, props.slashSuggestionCount);
   const panelBorderColor = getWorkShellPanelBorderColor(props.inputValue, props.activePanel.title);
   const panelDisplayMode = getWorkShellPanelDisplayMode({
     panelTitle: props.activePanel.title,
@@ -538,14 +569,21 @@ export function WorkShellView(props: {
 
   return (
     <Box flexDirection="column" paddingX={1}>
-      <Box justifyContent="space-between">
-        <Text bold>{formatWorkShellProviderTitle(props.provider)}</Text>
-        <Text color="gray">{props.headerHint ?? "Esc sessions · /auth · /model · /review"}</Text>
-      </Box>
-      <Box marginTop={1} borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column">
-        <Text color={props.reasoningSupported ? "white" : "yellow"}>{statusLine}</Text>
-        <Text color={props.isBusy ? "cyan" : "gray"}>{usageLine}</Text>
-      </Box>
+      <WorkShellHeaderBlock
+        provider={props.provider}
+        {...(props.headerHint ? { headerHint: props.headerHint } : {})}
+      />
+      <WorkShellStatusBlock
+        model={props.model}
+        reasoningLabel={props.reasoningLabel}
+        reasoningSupported={props.reasoningSupported}
+        mode={props.mode}
+        authLabel={props.authLabel}
+        isBusy={props.isBusy}
+        {...(props.busyStatus ? { busyStatus: props.busyStatus } : {})}
+        {...(props.currentTurnStartedAt !== undefined ? { currentTurnStartedAt: props.currentTurnStartedAt } : {})}
+        {...(props.lastTurnDurationMs !== undefined ? { lastTurnDurationMs: props.lastTurnDurationMs } : {})}
+      />
       {getWorkShellPanelAnchor(panelDisplayMode) === "with-conversation" ? (
         <Box marginTop={1}>
           {conversation}
