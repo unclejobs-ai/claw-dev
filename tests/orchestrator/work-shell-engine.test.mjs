@@ -6,6 +6,24 @@ import {
   createWorkShellEngine,
   createWorkShellPaneRuntime,
 } from "@unclecode/orchestrator";
+import {
+  buildAuthProgressPanelLines,
+  buildPromptCommandPrompt,
+  createAuthLoginPendingPanel,
+  createLoadedSkillPanel,
+  createSecureApiKeyEntryPanel,
+  createSkillsPanel,
+  resolvePromptSlashCommand,
+  resolveWorkShellBuiltinCommand,
+} from "../../packages/orchestrator/src/work-shell-engine-commands.ts";
+import {
+  appendWorkShellEntries,
+  createInitialWorkShellEngineState,
+  createWorkShellAuthStatePatch,
+  createWorkShellBusyStatePatch,
+  createWorkShellTraceLinePatch,
+  createWorkShellTraceModePatch,
+} from "../../packages/orchestrator/src/work-shell-engine-state.ts";
 
 const supportedReasoning = {
   effort: "high",
@@ -16,6 +34,32 @@ const supportedReasoning = {
     supportedEfforts: ["low", "medium", "high"],
   },
 };
+
+function buildContextPanel(contextSummaryLines, bridgeLines, memoryLines, traceLines, expanded = false) {
+  return {
+    title: expanded ? "Context expanded" : "Context",
+    lines: [...contextSummaryLines, ...bridgeLines, ...memoryLines, ...traceLines],
+  };
+}
+
+function createState(overrides = {}) {
+  return {
+    ...createInitialWorkShellEngineState({
+      options: {
+        provider: "openai",
+        model: "gpt-5.4",
+        mode: "default",
+        authLabel: "api-key-env",
+        reasoning: supportedReasoning,
+        cwd: "/repo",
+        contextSummaryLines: ["Loaded guidance: AGENTS.md"],
+      },
+      contextSummaryLines: ["Loaded guidance: AGENTS.md"],
+      buildContextPanel,
+    }),
+    ...overrides,
+  };
+}
 
 function createEngineInput(overrides = {}) {
   const calls = {
@@ -56,12 +100,7 @@ function createEngineInput(overrides = {}) {
         cwd: "/repo",
         contextSummaryLines: ["Loaded guidance: AGENTS.md"],
       },
-      buildContextPanel(contextSummaryLines, bridgeLines, memoryLines, traceLines, expanded = false) {
-        return {
-          title: expanded ? "Context expanded" : "Context",
-          lines: [...contextSummaryLines, ...bridgeLines, ...memoryLines, ...traceLines],
-        };
-      },
+      buildContextPanel,
       buildHelpPanel() {
         return { title: "Help", lines: ["help"] };
       },
@@ -180,6 +219,106 @@ function createEngine(overrides = {}) {
     },
   };
 }
+
+test("work-shell command helpers classify builtins and build reusable panels/prompts", () => {
+  assert.deepEqual(resolveWorkShellBuiltinCommand("/help"), { kind: "help" });
+  assert.deepEqual(resolveWorkShellBuiltinCommand("/v"), { kind: "trace-mode", traceMode: "verbose" });
+  assert.deepEqual(resolveWorkShellBuiltinCommand("/minimal"), { kind: "trace-mode", traceMode: "minimal" });
+  assert.deepEqual(resolveWorkShellBuiltinCommand("/auth key"), { kind: "auth-key" });
+  assert.deepEqual(resolveWorkShellBuiltinCommand("/skill analyze"), { kind: "skill", line: "/skill analyze", skillName: "analyze" });
+  assert.equal(resolveWorkShellBuiltinCommand("hello"), undefined);
+
+  assert.equal(createSecureApiKeyEntryPanel().title, "Auth");
+  assert.deepEqual(createAuthLoginPendingPanel().lines, [
+    "Starting OAuth…",
+    "Check the browser window.",
+  ]);
+  assert.deepEqual(buildAuthProgressPanelLines([
+    "Opening browser…",
+    "Enter code: ABCD-1234",
+    "Waiting for device approval…",
+  ]), [
+    "Enter code: ABCD-1234",
+    "Waiting for device approval…",
+    "Opening browser…",
+  ]);
+  assert.deepEqual(createSkillsPanel([{ name: "autopilot", path: "/skills/autopilot", scope: "project", summary: "Keep moving." }]).lines, [
+    "autopilot · project",
+    "  Keep moving.",
+  ]);
+  assert.equal(createLoadedSkillPanel({ name: "analyze", path: "/skills/analyze", content: "# Analyze\nLook deeper.", attempts: [] }).title, "Skill · analyze");
+  assert.deepEqual(resolvePromptSlashCommand(["prompt", "review", "auth", "flow"]), { kind: "review", focus: "auth flow" });
+  assert.match(buildPromptCommandPrompt({ kind: "commit", focus: "auth flow" }), /Lore protocol/);
+});
+
+test("createInitialWorkShellEngineState derives the shell defaults from options", () => {
+  const state = createInitialWorkShellEngineState({
+    options: {
+      provider: "openai",
+      model: "gpt-5.4",
+      mode: "ultrawork",
+      authLabel: "oauth-file",
+      reasoning: supportedReasoning,
+      cwd: "/repo",
+      contextSummaryLines: ["Loaded guidance: AGENTS.md"],
+    },
+    contextSummaryLines: ["Loaded guidance: AGENTS.md"],
+    buildContextPanel,
+  });
+
+  assert.equal(state.panel.title, "Context");
+  assert.equal(state.traceMode, "verbose");
+  assert.equal(state.authLabel, "oauth-file");
+  assert.deepEqual(state.entries, []);
+});
+
+test("work-shell state helpers append entries and update auth/busy transitions deterministically", () => {
+  const state = createState();
+  const withEntries = { ...state, ...appendWorkShellEntries(state, { role: "system", text: "hello" }) };
+  const withAuth = { ...withEntries, ...createWorkShellAuthStatePatch({ state: withEntries, authLabel: "oauth-file", authLauncherLines: ["Saved auth found."] }) };
+  const withBusy = { ...withAuth, ...createWorkShellBusyStatePatch({ state: withAuth, isBusy: true, busyStatus: "thinking" }) };
+
+  assert.deepEqual(withEntries.entries, [{ role: "system", text: "hello" }]);
+  assert.equal(withAuth.authLabel, "oauth-file");
+  assert.deepEqual(withAuth.authLauncherLines, ["Saved auth found."]);
+  assert.equal(withBusy.isBusy, true);
+  assert.equal(withBusy.busyStatus, "thinking");
+});
+
+test("work-shell state helpers update trace mode and trace lines without mutating pinned panels", () => {
+  const state = createState({
+    panel: { title: "Status", lines: ["model:gpt-5.4"] },
+    bridgeLines: ["bridge-1"],
+    memoryLines: ["memory-1"],
+    traceLines: ["old trace"],
+  });
+
+  const minimal = {
+    ...state,
+    ...createWorkShellTraceModePatch({
+      state,
+      traceMode: "minimal",
+      contextSummaryLines: ["Loaded guidance: AGENTS.md"],
+      buildContextPanel,
+    }),
+  };
+  const traced = {
+    ...state,
+    ...createWorkShellTraceLinePatch({
+      state,
+      line: "new trace",
+      preservePanel: false,
+      contextSummaryLines: ["Loaded guidance: AGENTS.md"],
+      buildContextPanel,
+    }),
+  };
+
+  assert.equal(minimal.traceMode, "minimal");
+  assert.deepEqual(minimal.traceLines, []);
+  assert.equal(minimal.panel.title, "Context");
+  assert.deepEqual(traced.traceLines, ["new trace", "old trace"]);
+  assert.equal(traced.panel.title, "Status");
+});
 
 test("createWorkShellPaneRuntime builds shared engine and slash runtime helpers", () => {
   const { input } = createEngineInput();
@@ -727,6 +866,8 @@ test("WorkShellEngine keeps automatic bridge and memory bookkeeping out of the c
     engine.getState().entries.map((entry) => entry.role),
     ["user", "assistant"],
   );
+  assert.equal(typeof engine.getState().lastTurnDurationMs, "number");
+  assert.ok((engine.getState().lastTurnDurationMs ?? 0) >= 0);
   assert.ok(engine.getState().traceLines.some((line) => line.startsWith("bridge ")));
   assert.ok(engine.getState().traceLines.some((line) => line.startsWith("memory ")));
 });

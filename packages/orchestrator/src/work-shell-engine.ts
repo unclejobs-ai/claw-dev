@@ -1,5 +1,23 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  buildAuthProgressPanelLines,
+  buildPromptCommandPrompt,
+  createAuthLoginPendingPanel,
+  createLoadedSkillPanel,
+  createSecureApiKeyEntryPanel,
+  createSkillsPanel,
+  resolvePromptSlashCommand,
+  resolveWorkShellBuiltinCommand,
+} from "./work-shell-engine-commands.js";
+import {
+  appendWorkShellEntries,
+  createInitialWorkShellEngineState,
+  createWorkShellAuthStatePatch,
+  createWorkShellBusyStatePatch,
+  createWorkShellTraceLinePatch,
+  createWorkShellTraceModePatch,
+} from "./work-shell-engine-state.js";
 import type { WorkShellReasoningConfig } from "./reasoning.js";
 
 export type WorkShellChatEntry = {
@@ -68,6 +86,7 @@ export type WorkShellEngineState<Reasoning extends WorkShellReasoningConfig> = {
   readonly composerMode: WorkShellComposerMode;
   readonly isBusy: boolean;
   readonly busyStatus?: string | undefined;
+  readonly lastTurnDurationMs?: number | undefined;
 };
 
 export interface WorkShellAgent<Attachment, TraceEvent, Reasoning extends WorkShellReasoningConfig> {
@@ -314,21 +333,11 @@ export class WorkShellEngine<
     this.onExit = input.onExit;
     this.sessionId = input.sessionId ?? `work-${randomUUID()}`;
     this.currentContextSummaryLines = input.options.contextSummaryLines;
-    this.state = {
-      entries: [],
-      model: input.options.model,
-      reasoning: input.options.reasoning,
-      authLabel: input.options.authLabel,
-      authLauncherLines: [],
-      bridgeLines: [],
-      memoryLines: [],
-      panel: input.buildContextPanel(this.currentContextSummaryLines, [], [], []),
-      traceLines: [],
-      traceMode: input.options.initialTraceMode ?? (input.options.mode === "ultrawork" ? "verbose" : "minimal"),
-      composerMode: "default",
-      isBusy: false,
-      busyStatus: undefined,
-    };
+    this.state = createInitialWorkShellEngineState({
+      options: input.options,
+      contextSummaryLines: this.currentContextSummaryLines,
+      buildContextPanel: input.buildContextPanel,
+    });
   }
 
   getState(): WorkShellEngineState<Reasoning> {
@@ -432,8 +441,11 @@ export class WorkShellEngine<
         );
         this.setState({
           composerMode: "default",
-          authLabel: nextAuthLabel,
-          authLauncherLines: resultLines,
+          ...createWorkShellAuthStatePatch({
+            state: this.state,
+            authLabel: nextAuthLabel,
+            authLauncherLines: resultLines,
+          }),
           panel: this.buildInlineCommandPanel(["auth", "key"], resultLines),
         });
         this.pushTraceLine("→ auth key", true);
@@ -460,213 +472,156 @@ export class WorkShellEngine<
       return;
     }
 
-    if (line === "/exit") {
-      this.onExit();
-      return;
-    }
-
-    if (line === "/clear") {
-      this.agent.clear();
-      this.setState({ entries: [{ role: "system", text: "Conversation cleared." }] });
-      return;
-    }
-
-    if (line === "/help") {
-      this.appendEntries(
-        { role: "user", text: line },
-        { role: "system", text: "Help shown." },
-      );
-      this.setState({ panel: this.buildHelpPanel() });
-      return;
-    }
-
-    if (line === "/context") {
-      this.appendEntries(
-        { role: "user", text: line },
-        { role: "system", text: "Context shown." },
-      );
-      this.setState({
-        panel: this.buildContextPanel(
-          this.currentContextSummaryLines,
-          this.state.bridgeLines,
-          this.state.memoryLines,
-          this.state.traceLines,
-          true,
-        ),
-      });
-      return;
-    }
-
-    if (line === "/reload") {
-      this.appendEntries(
-        { role: "user", text: line },
-        { role: "system", text: "Reloading workspace context…" },
-      );
-      await this.reloadContextState();
-      this.appendEntries({ role: "system", text: "Workspace context reloaded." });
-      return;
-    }
-
-    if (line === "/status") {
-      this.appendEntries(
-        { role: "user", text: line },
-        { role: "system", text: "Status shown. Live steps return on the next action." },
-      );
-      this.setState({ panel: this.buildStatusPanelFor(this.state.reasoning, this.state.authLabel) });
-      return;
-    }
-
-    if (line === "/verbose" || line === "/v") {
-      this.appendEntries(
-        { role: "user", text: line },
-        { role: "system", text: "Verbose trace mode enabled." },
-      );
-      this.setState({ traceMode: "verbose" });
-      await this.persistSessionSnapshot("idle", this.lastSessionSummary, "verbose").catch(() => undefined);
-      return;
-    }
-
-    if (line === "/minimal" || line === "/m") {
-      this.appendEntries(
-        { role: "user", text: line },
-        { role: "system", text: "Minimal trace mode enabled." },
-      );
-      this.setState({
-        traceMode: "minimal",
-        traceLines: [],
-        panel: this.buildContextPanel(
-          this.currentContextSummaryLines,
-          this.state.bridgeLines,
-          this.state.memoryLines,
-          [],
-        ),
-      });
-      await this.persistSessionSnapshot("idle", this.lastSessionSummary, "minimal").catch(() => undefined);
-      return;
-    }
-
-    if (line === "/sessions") {
-      this.appendEntries({ role: "user", text: line });
-      await this.openSessionsPanel();
-      return;
-    }
-
-    if (line.startsWith("/reasoning")) {
-      const modeDefault = this.modeDefaultReasoning();
-      const result = this.resolveReasoningCommand(line, this.state.reasoning, modeDefault);
-      this.agent.updateRuntimeSettings({ reasoning: result.nextReasoning });
-      this.appendEntries(
-        { role: "user", text: line },
-        { role: "system", text: result.message },
-      );
-      this.setState({
-        reasoning: result.nextReasoning,
-        panel: this.buildStatusPanelFor(result.nextReasoning, this.state.authLabel),
-      });
-      return;
-    }
-
-    if (line.startsWith("/model")) {
-      const modeDefault = this.modeDefaultReasoning();
-      const result = this.resolveModelCommand?.(line, this.state.model, this.state.reasoning, modeDefault);
-      if (result) {
-        if (result.nextModel !== this.state.model || result.nextReasoning !== this.state.reasoning) {
-          this.agent.updateRuntimeSettings({ model: result.nextModel, reasoning: result.nextReasoning });
+    const builtinCommand = resolveWorkShellBuiltinCommand(line);
+    if (builtinCommand) {
+      switch (builtinCommand.kind) {
+        case "exit":
+          this.onExit();
+          return;
+        case "clear":
+          this.agent.clear();
+          this.setState({ entries: [{ role: "system", text: "Conversation cleared." }] });
+          return;
+        case "help":
+          this.appendEntries(
+            { role: "user", text: line },
+            { role: "system", text: "Help shown." },
+          );
+          this.setState({ panel: this.buildHelpPanel() });
+          return;
+        case "context":
+          this.appendEntries(
+            { role: "user", text: line },
+            { role: "system", text: "Context shown." },
+          );
+          this.setState({
+            panel: this.buildContextPanel(
+              this.currentContextSummaryLines,
+              this.state.bridgeLines,
+              this.state.memoryLines,
+              this.state.traceLines,
+              true,
+            ),
+          });
+          return;
+        case "reload":
+          this.appendEntries(
+            { role: "user", text: line },
+            { role: "system", text: "Reloading workspace context…" },
+          );
+          await this.reloadContextState();
+          this.appendEntries({ role: "system", text: "Workspace context reloaded." });
+          return;
+        case "status":
+          this.appendEntries(
+            { role: "user", text: line },
+            { role: "system", text: "Status shown. Live steps return on the next action." },
+          );
+          this.setState({ panel: this.buildStatusPanelFor(this.state.reasoning, this.state.authLabel) });
+          return;
+        case "trace-mode":
+          this.appendEntries(
+            { role: "user", text: line },
+            { role: "system", text: builtinCommand.traceMode === "verbose" ? "Verbose trace mode enabled." : "Minimal trace mode enabled." },
+          );
+          this.setState(createWorkShellTraceModePatch({
+            state: this.state,
+            traceMode: builtinCommand.traceMode,
+            contextSummaryLines: this.currentContextSummaryLines,
+            buildContextPanel: this.buildContextPanel,
+          }));
+          await this.persistSessionSnapshot("idle", this.lastSessionSummary, builtinCommand.traceMode).catch(() => undefined);
+          return;
+        case "sessions":
+          this.appendEntries({ role: "user", text: line });
+          await this.openSessionsPanel();
+          return;
+        case "reasoning": {
+          const modeDefault = this.modeDefaultReasoning();
+          const result = this.resolveReasoningCommand(line, this.state.reasoning, modeDefault);
+          this.agent.updateRuntimeSettings({ reasoning: result.nextReasoning });
+          this.appendEntries(
+            { role: "user", text: line },
+            { role: "system", text: result.message },
+          );
+          this.setState({
+            reasoning: result.nextReasoning,
+            panel: this.buildStatusPanelFor(result.nextReasoning, this.state.authLabel),
+          });
+          return;
         }
-        this.appendEntries(
-          { role: "user", text: line },
-          { role: "system", text: result.message },
-        );
-        this.setState({
-          model: result.nextModel,
-          reasoning: result.nextReasoning,
-          panel: result.panel,
-        });
-        await this.persistSessionSnapshot("idle", this.lastSessionSummary).catch(() => undefined);
-        return;
+        case "model": {
+          const modeDefault = this.modeDefaultReasoning();
+          const result = this.resolveModelCommand?.(line, this.state.model, this.state.reasoning, modeDefault);
+          if (!result) {
+            break;
+          }
+          if (result.nextModel !== this.state.model || result.nextReasoning !== this.state.reasoning) {
+            this.agent.updateRuntimeSettings({ model: result.nextModel, reasoning: result.nextReasoning });
+          }
+          this.appendEntries(
+            { role: "user", text: line },
+            { role: "system", text: result.message },
+          );
+          this.setState({
+            model: result.nextModel,
+            reasoning: result.nextReasoning,
+            panel: result.panel,
+          });
+          await this.persistSessionSnapshot("idle", this.lastSessionSummary).catch(() => undefined);
+          return;
+        }
+        case "tools":
+          this.appendEntries(
+            { role: "user", text: line },
+            { role: "system", text: this.toolLines.join("\n") },
+          );
+          return;
+        case "auth-key":
+          this.appendEntries({ role: "user", text: line });
+          this.setState({
+            composerMode: "api-key-entry",
+            panel: createSecureApiKeyEntryPanel(),
+          });
+          return;
+        case "skills": {
+          const skills = await this.listAvailableSkills(this.options.cwd);
+          this.appendEntries(
+            { role: "user", text: line },
+            { role: "system", text: skills.length > 0 ? `Loaded ${skills.length} skills.` : "No skills found." },
+          );
+          this.setState({ panel: createSkillsPanel(skills) });
+          return;
+        }
+        case "skill": {
+          if (!builtinCommand.skillName) {
+            this.appendEntries(
+              { role: "user", text: line },
+              { role: "system", text: "Usage: /skill <name>" },
+            );
+            return;
+          }
+
+          try {
+            const skill = await this.loadNamedSkill(builtinCommand.skillName, this.options.cwd);
+            this.appendEntries(
+              { role: "user", text: line },
+              ...skill.attempts.flatMap((attempt) => [
+                { role: "tool" as const, text: `read ${attempt.path}` },
+                ...(attempt.ok ? [] : [{ role: "system" as const, text: attempt.error ?? "Failed to read skill." }]),
+              ]),
+              { role: "system", text: `Loaded skill ${skill.name}.` },
+            );
+            this.setState({ panel: createLoadedSkillPanel(skill) });
+          } catch (error) {
+            this.appendEntries(
+              { role: "user", text: line },
+              { role: "system", text: error instanceof Error ? error.message : String(error) },
+            );
+          }
+          return;
+        }
       }
-    }
-
-    if (line === "/tools") {
-      this.appendEntries(
-        { role: "user", text: line },
-        { role: "system", text: this.toolLines.join("\n") },
-      );
-      return;
-    }
-
-    if (line === "/auth key") {
-      this.appendEntries({ role: "user", text: line });
-      this.setState({
-        composerMode: "api-key-entry",
-        panel: {
-          title: "Auth",
-          lines: [
-            "Current",
-            "Secure API key entry.",
-            "",
-            "Next",
-            "Paste key. Optional: --org <id> --project <id>.",
-            "Enter saves · Esc cancels.",
-          ],
-        },
-      });
-      return;
-    }
-
-    if (line === "/skills") {
-      const skills = await this.listAvailableSkills(this.options.cwd);
-      this.appendEntries(
-        { role: "user", text: line },
-        { role: "system", text: skills.length > 0 ? `Loaded ${skills.length} skills.` : "No skills found." },
-      );
-      this.setState({
-        panel: {
-          title: "Skills",
-          lines: skills.length > 0
-            ? skills.slice(0, 12).flatMap((skill) => [
-                `${skill.name} · ${skill.scope}`,
-                ...(skill.summary ? [`  ${skill.summary}`] : []),
-              ])
-            : ["No skills found."],
-        },
-      });
-      return;
-    }
-
-    if (line.startsWith("/skill ")) {
-      const skillName = line.slice(7).trim();
-      if (!skillName) {
-        this.appendEntries(
-          { role: "user", text: line },
-          { role: "system", text: "Usage: /skill <name>" },
-        );
-        return;
-      }
-
-      try {
-        const skill = await this.loadNamedSkill(skillName, this.options.cwd);
-        this.appendEntries(
-          { role: "user", text: line },
-          ...skill.attempts.flatMap((attempt) => [
-            { role: "tool" as const, text: `read ${attempt.path}` },
-            ...(attempt.ok ? [] : [{ role: "system" as const, text: attempt.error ?? "Failed to read skill." }]),
-          ]),
-          { role: "system", text: `Loaded skill ${skill.name}.` },
-        );
-        this.setState({
-          panel: {
-            title: `Skill · ${skill.name}`,
-            lines: skill.content.split(/\r?\n/).slice(0, 12),
-          },
-        });
-      } catch (error) {
-        this.appendEntries(
-          { role: "user", text: line },
-          { role: "system", text: error instanceof Error ? error.message : String(error) },
-        );
-      }
-      return;
     }
 
     const slashCommand = this.resolveWorkShellSlashCommand(line);
@@ -683,40 +638,11 @@ export class WorkShellEngine<
       this.appendEntries({ role: "user", text: visibleLine });
       this.setState({
         isBusy: true,
-        ...(isAuthLogin
-          ? {
-              panel: {
-                title: "Auth",
-                lines: [
-                  "Starting OAuth…",
-                  "Check the browser window.",
-                ],
-              },
-            }
-          : {}),
+        ...(isAuthLogin ? { panel: createAuthLoginPendingPanel() } : {}),
       });
 
       try {
         const authProgressLines: string[] = [];
-        const buildAuthProgressPanelLines = (): readonly string[] => {
-          const normalizedLines = authProgressLines
-            .map((line) => line.trim())
-            .filter((line) => line.length > 0);
-          if (normalizedLines.length === 0) {
-            return ["Starting OAuth…", "Check the browser window."];
-          }
-
-          const latestCodeLine = [...normalizedLines].reverse().find((line) => line.startsWith("Enter code:"));
-          const latestStatusLine = normalizedLines.at(-1);
-          const historyLines = normalizedLines.filter((line) => line !== latestCodeLine && line !== latestStatusLine);
-
-          return [
-            ...(latestCodeLine ? [latestCodeLine] : []),
-            ...(latestStatusLine && latestStatusLine !== latestCodeLine ? [latestStatusLine] : []),
-            ...historyLines,
-            ...(latestCodeLine ? [] : latestStatusLine ? [] : ["Check the browser window."]),
-          ];
-        };
         const commandResult = await this.resolveWorkShellInlineCommand(
           slashCommand,
           this.runInlineCommand,
@@ -726,7 +652,7 @@ export class WorkShellEngine<
                 this.setState({
                   panel: {
                     title: "Auth",
-                    lines: buildAuthProgressPanelLines(),
+                    lines: buildAuthProgressPanelLines(authProgressLines),
                   },
                 });
               }
@@ -869,11 +795,13 @@ export class WorkShellEngine<
   }): Promise<void> {
     this.appendEntries({ role: "user", text: input.transcriptText });
     this.setState({ isBusy: true, busyStatus: "thinking" });
+    const turnStartedAt = Date.now();
 
     try {
       await this.persistSessionSnapshot("running", input.sessionSummary).catch(() => undefined);
 
       const result = await this.agent.runTurn(input.prompt, input.attachments ?? []);
+      const lastTurnDurationMs = Date.now() - turnStartedAt;
       const assistantText = await this.finalizeAssistantReply(input.prompt, result.text || "(empty response)");
       this.appendEntries({ role: "assistant", text: assistantText });
 
@@ -917,6 +845,7 @@ export class WorkShellEngine<
       const nextSessionMemoryLines = await this.listScopedMemoryLines({ scope: "session", cwd: this.options.cwd, sessionId: this.sessionId });
       this.setState({ memoryLines: nextSessionMemoryLines });
 
+      this.setState({ lastTurnDurationMs });
       await this.persistSessionSnapshot("idle", input.sessionSummary).catch(() => undefined);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -933,14 +862,21 @@ export class WorkShellEngine<
       }
       this.appendEntries({ role: "system", text: this.formatWorkShellError(message) });
       this.setState({
-        authLabel: nextAuthLabel,
+        ...createWorkShellAuthStatePatch({
+          state: this.state,
+          authLabel: nextAuthLabel,
+        }),
+        lastTurnDurationMs: Date.now() - turnStartedAt,
         ...(isAuthFailure
           ? { panel: this.buildStatusPanelFor(this.state.reasoning, nextAuthLabel) }
           : {}),
       });
       await this.persistSessionSnapshot("requires_action", input.failureSummary).catch(() => undefined);
     } finally {
-      this.setState({ isBusy: false, busyStatus: undefined });
+      this.setState(createWorkShellBusyStatePatch({
+        state: this.state,
+        isBusy: false,
+      }));
     }
   }
 
@@ -948,7 +884,11 @@ export class WorkShellEngine<
     const line = this.formatAgentTraceLine(event);
     const busyStatus = resolveBusyStatusFromTraceEvent(event, line);
     if (busyStatus !== null) {
-      this.setState(busyStatus ? { busyStatus } : { busyStatus: undefined });
+      this.setState(createWorkShellBusyStatePatch({
+        state: this.state,
+        isBusy: this.state.isBusy,
+        ...(busyStatus ? { busyStatus } : {}),
+      }));
     }
 
     if (this.state.traceMode !== "verbose") {
@@ -1004,7 +944,7 @@ export class WorkShellEngine<
   }
 
   private appendEntries(...entries: readonly WorkShellChatEntry[]): void {
-    this.setState({ entries: [...this.state.entries, ...entries] });
+    this.setState(appendWorkShellEntries(this.state, ...entries));
   }
 
   private async persistSessionSnapshot(
@@ -1039,21 +979,13 @@ export class WorkShellEngine<
   }
 
   private pushTraceLine(line: string, preservePanel = false): void {
-    const traceLines = [line, ...this.state.traceLines].slice(0, 8);
-    const shouldKeepPanel = preservePanel || isPinnedPanelTitle(this.state.panel.title);
-    this.setState({
-      traceLines,
-      ...(shouldKeepPanel
-        ? {}
-        : {
-            panel: this.buildContextPanel(
-              this.currentContextSummaryLines,
-              this.state.bridgeLines,
-              this.state.memoryLines,
-              traceLines,
-            ),
-          }),
-    });
+    this.setState(createWorkShellTraceLinePatch({
+      state: this.state,
+      line,
+      preservePanel,
+      contextSummaryLines: this.currentContextSummaryLines,
+      buildContextPanel: this.buildContextPanel,
+    }));
   }
 
   private setState(patch: Partial<WorkShellEngineState<Reasoning>>): void {
@@ -1084,46 +1016,6 @@ function resolveBusyStatusFromTraceEvent(
   return null;
 }
 
-function resolvePromptSlashCommand(
-  slashCommand: readonly string[] | undefined,
-): { readonly kind: "review" | "commit"; readonly focus?: string } | undefined {
-  if (!slashCommand || slashCommand[0] !== "prompt") {
-    return undefined;
-  }
-
-  const kind = slashCommand[1];
-  if (kind !== "review" && kind !== "commit") {
-    return undefined;
-  }
-
-  const focus = slashCommand.slice(2).join(" ").trim();
-  return focus.length > 0 ? { kind, focus } : { kind };
-}
-
-function buildPromptCommandPrompt(input: { readonly kind: "review" | "commit"; readonly focus?: string }): string {
-  const focusLine = `Focus request: ${input.focus ?? "current changes in this workspace"}`;
-
-  if (input.kind === "review") {
-    return [
-      "Review the current repository changes and implementation.",
-      focusLine,
-      "Report concrete issues, risks, missing verification, and the smallest high-value next fixes.",
-      "If no major issue is found, say that explicitly and still list remaining risks and verification gaps.",
-      "Respond with sections: Findings, Risks, Recommended tests, Verdict.",
-    ].join("\n\n");
-  }
-
-  return [
-    "Draft a single git commit message using the Lore protocol.",
-    focusLine,
-    "The first line must explain why, not what changed.",
-    "Then provide a short body plus git trailers using this vocabulary when applicable:",
-    "Constraint:\nRejected:\nConfidence:\nScope-risk:\nDirective:\nTested:\nNot-tested:",
-    "If some details are unknown, keep them honest and concise instead of inventing facts.",
-    "Output only the commit message.",
-  ].join("\n\n");
-}
-
 const PERMISSION_STALL_PATTERNS = [
   /^(?:if you want|if you'd like|if you want me to|if you'd like me to)\b/i,
   /^(?:let me know|tell me) if you (?:want|would like)\b/i,
@@ -1150,10 +1042,6 @@ function redactSensitiveInlineCommandLine(line: string): string {
 
 function summarizeText(value: string): string {
   return value.length > 72 ? `${value.slice(0, 69)}...` : value;
-}
-
-function isPinnedPanelTitle(title: string): boolean {
-  return title === "Recent sessions" || title === "Session status" || title === "Status" || title === "Help" || title === "Memories" || title === "Skills" || title.startsWith("Skill · ");
 }
 
 function splitReplyParagraphs(text: string): readonly string[] {

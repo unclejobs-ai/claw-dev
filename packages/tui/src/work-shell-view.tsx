@@ -231,6 +231,33 @@ export function formatWorkShellStatusLine(input: {
   ].join(" · ");
 }
 
+export function formatWorkShellUsageLine(input: {
+  readonly isBusy: boolean;
+  readonly busyStatus?: string;
+  readonly lastTurnDurationMs?: number;
+}): string {
+  const activity = input.isBusy
+    ? "Working now"
+    : "Ready";
+  const usage = input.lastTurnDurationMs !== undefined
+    ? `last reply ${formatCompactDuration(input.lastTurnDurationMs)}`
+    : "no reply yet";
+  const detail = input.isBusy && input.busyStatus
+    ? input.busyStatus.replace(/^[·→★✓✖↔]\s*/u, "").trim()
+    : undefined;
+  return [activity, usage, detail].filter((value) => value && value.length > 0).join(" · ");
+}
+
+function formatCompactDuration(durationMs: number): string {
+  if (durationMs < 1000) {
+    return `${Math.max(0, Math.round(durationMs))}ms`;
+  }
+  if (durationMs < 10_000) {
+    return `${(durationMs / 1000).toFixed(1)}s`;
+  }
+  return `${Math.round(durationMs / 1000)}s`;
+}
+
 export function parseWorkShellPanelFactLine(line: string): { readonly label: string; readonly value: string } | undefined {
   const match = /^(?!\/)([A-Z][A-Za-z ]+)\s·\s(.+)$/.exec(line.trim());
   if (!match) {
@@ -349,6 +376,7 @@ export function WorkShellView(props: {
   readonly isBusy: boolean;
   readonly busyStatus?: string;
   readonly activePanel: WorkShellPanel;
+  readonly lastTurnDurationMs?: number;
   readonly attachmentLines?: readonly string[];
   readonly composer: React.ReactNode;
   readonly inputValue: string;
@@ -364,6 +392,11 @@ export function WorkShellView(props: {
     reasoningLabel: props.reasoningLabel,
     mode: props.mode,
     authLabel: props.authLabel,
+  });
+  const usageLine = formatWorkShellUsageLine({
+    isBusy: props.isBusy,
+    ...(props.busyStatus ? { busyStatus: props.busyStatus } : {}),
+    ...(props.lastTurnDurationMs !== undefined ? { lastTurnDurationMs: props.lastTurnDurationMs } : {}),
   });
 
   React.useEffect(() => {
@@ -450,8 +483,9 @@ export function WorkShellView(props: {
         <Text bold>{formatWorkShellProviderTitle(props.provider)}</Text>
         <Text color="gray">{props.headerHint ?? "Esc sessions · /auth · /model · /review"}</Text>
       </Box>
-      <Box marginTop={1} borderStyle="round" borderColor="gray" paddingX={1}>
+      <Box marginTop={1} borderStyle="round" borderColor="gray" paddingX={1} flexDirection="column">
         <Text color={props.reasoningSupported ? "white" : "yellow"}>{statusLine}</Text>
+        <Text color={props.isBusy ? "cyan" : "gray"}>{usageLine}</Text>
       </Box>
       {getWorkShellPanelAnchor(panelDisplayMode) === "with-conversation" ? (
         <Box marginTop={1}>

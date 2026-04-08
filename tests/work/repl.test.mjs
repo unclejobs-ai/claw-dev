@@ -629,11 +629,11 @@ test("getWorkShellSlashSuggestions expands /model into concrete model picks", ()
   });
 
   assert.deepEqual(
-    suggestions.slice(0, 4).map((item) => item.command),
-    ["/model", "/model list", "/model gpt-5.4", "/model gpt-4.1-mini"],
+    suggestions.slice(0, 5).map((item) => item.command),
+    ["/model", "/model list", "/model gpt-5.4", "/model gpt-5.4-mini", "/model o4-mini"],
   );
   assert.match(suggestions[2]?.description ?? "", /Current · default medium · supports low, medium, high/i);
-  assert.match(suggestions[3]?.description ?? "", /Warning · reasoning unsupported/i);
+  assert.match(suggestions[3]?.description ?? "", /Default · default medium · supports low, medium, high/i);
 });
 
 test("composer helpers support multiline editing without slow preview for plain text", () => {
@@ -828,7 +828,7 @@ test("buildSlashSuggestionPanel shows a model-focused picker for /model intent",
       { command: "/model", description: "Show the current model and available model picks." },
       { command: "/model list", description: "List available models and reasoning support." },
       { command: "/model gpt-5.4", description: "Current · default medium · supports low, medium, high" },
-      { command: "/model gpt-4.1-mini", description: "Reasoning unsupported" },
+      { command: "/model gpt-5.4-mini", description: "Default · default medium · supports low, medium, high" },
     ],
     2,
   );
@@ -841,7 +841,7 @@ test("buildSlashSuggestionPanel shows a model-focused picker for /model intent",
     "",
     "Available",
     "› /model gpt-5.4  active · medium",
-    "  /model gpt-4.1-mini  no reasoning",
+    "  /model gpt-5.4-mini  default medium",
     "",
   ]);
   assert.equal(panel.lines.at(-1), "Enter switch · Esc close");

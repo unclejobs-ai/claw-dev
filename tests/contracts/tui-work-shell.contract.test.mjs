@@ -29,6 +29,7 @@ import {
   formatWorkShellError,
   formatWorkShellProviderTitle,
   formatWorkShellStatusLine,
+  formatWorkShellUsageLine,
   getWorkShellAttachmentMinHeight,
   getWorkShellAttachmentPlacement,
   getWorkShellBottomDrawerMinHeight,
@@ -501,6 +502,21 @@ test("work-shell panel helpers are exported from the shared tui package seam", (
   assert.equal(
     formatWorkShellBusyStatusLine("· thinking inspect repo", 0),
     "⠋ thinking inspect repo",
+  );
+  assert.equal(
+    formatWorkShellUsageLine({
+      isBusy: false,
+      lastTurnDurationMs: 1480,
+    }),
+    "Ready · last reply 1.5s",
+  );
+  assert.equal(
+    formatWorkShellUsageLine({
+      isBusy: true,
+      busyStatus: "thinking inspect repo",
+      lastTurnDurationMs: 1480,
+    }),
+    "Working now · last reply 1.5s · thinking inspect repo",
   );
   assert.equal(
     normalizeMarkdownDisplayText("## Heading\n- `npm run check`\n- **Done**"),
