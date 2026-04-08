@@ -1228,6 +1228,139 @@
 - [x] Step 2: Delete `interactive-shell.ts` and remove any residual guardian/bootstrap references that still treat it as a live app seam.
 - [x] Step 3: Re-run targeted contract/guardian coverage before full verification.
 
+### Task 93: Remove leftover helper re-exports from `program.ts`
+**Files:**
+- Modify: `apps/unclecode-cli/src/program.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires repo-internal tests to import startup/work helpers from their owner seams instead of via `program.ts`, and requires `program.ts` to stop re-exporting them.
+- [x] Step 2: Delete the leftover `program.ts` helper re-exports so the file owns only CLI program construction/commands.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 94: Deduplicate app bootstrap input shapes behind owner-seam exported types
+**Files:**
+- Modify: `apps/unclecode-cli/src/session-center-bootstrap.ts`
+- Modify: `apps/unclecode-cli/src/work-bootstrap.ts`
+- Modify: `apps/unclecode-cli/src/interactive-launch-inputs.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires session-center env input and work launch input shapes to be exported from their owner seams instead of repeated as anonymous object types in downstream helpers.
+- [x] Step 2: Export the owner-seam types and cut interactive bootstrap helpers over to them without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 95: Replace remaining session-center bootstrap anonymous helper shapes with named aliases
+**Files:**
+- Modify: `apps/unclecode-cli/src/session-center-bootstrap.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires remaining helper input/output object shapes in `session-center-bootstrap.ts` to use named type aliases instead of repeated inline object literals.
+- [x] Step 2: Introduce named aliases for embedded-pane load input and session-center render/runtime helper payloads, then cut helper signatures over without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 96: Replace remaining session-center bootstrap anonymous return/result shapes with named aliases
+**Files:**
+- Modify: `apps/unclecode-cli/src/session-center-bootstrap.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires environment/dependency/render result signatures in `session-center-bootstrap.ts` to use named aliases instead of inline return object types.
+- [x] Step 2: Introduce named aliases for session-center environment, resolved dependency, and prepared render-input result shapes, then cut helper signatures over without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 97: Replace remaining app bootstrap/startup anonymous input shapes with owner-seam aliases
+**Files:**
+- Modify: `apps/unclecode-cli/src/work-bootstrap.ts`
+- Modify: `apps/unclecode-cli/src/startup-paths.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires `loadEmbeddedWorkPane(...)` to consume the shared `EmbeddedWorkPaneLoadInput<WorkModule>` seam and `shouldLaunchDefaultWorkSession(...)` to consume an owner-seam startup input alias.
+- [x] Step 2: Cut `work-bootstrap.ts` and `startup-paths.ts` over to those named aliases without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 98: Replace interactive launch union member inline shapes with named owner-seam aliases
+**Files:**
+- Modify: `apps/unclecode-cli/src/interactive-launch-inputs.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires named `WorkInteractiveSurfaceInput` and `CenterInteractiveSurfaceInput` aliases instead of `Extract<InteractiveSurfaceInput, ...>` signatures.
+- [x] Step 2: Cut the union and helper signatures over to those aliases without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 99: Replace remaining program-helper anonymous shapes with named aliases
+**Files:**
+- Modify: `apps/unclecode-cli/src/program.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires named aliases for browser-oauth callback input and resolved auth-status helper shapes in `program.ts`.
+- [x] Step 2: Cut `waitForBrowserOAuthCallback(...)` and `formatLogoutResult(...)` over to those aliases without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 100: Replace remaining program command-option anonymous shapes with named aliases
+**Files:**
+- Modify: `apps/unclecode-cli/src/program.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires named option/flag aliases for the remaining `program.ts` command handlers instead of inline object types.
+- [x] Step 2: Cut shared work command options, auth/config/doctor/resume/research option shapes, and config CLI flag payload over to those aliases without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 101: Deduplicate `program.ts` work/tui forwarded-arg assembly behind one helper
+**Files:**
+- Modify: `apps/unclecode-cli/src/program.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires one shared helper for work/tui forwarded-arg assembly instead of two local copies.
+- [x] Step 2: Introduce the helper and cut both handlers over without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 102: Split `program.ts` auth-login body behind named helper seams
+**Files:**
+- Modify: `apps/unclecode-cli/src/program.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires auth-login runtime/context resolution and browser/device/api-key branches to flow through named helpers instead of one large inline action body.
+- [x] Step 2: Introduce the minimal helper types/functions and cut the auth-login action over without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 103: Split `program.ts` report/resume/research command bodies behind named helper seams
+**Files:**
+- Modify: `apps/unclecode-cli/src/program.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires named helpers for doctor, resume, research status, and research run command bodies instead of inline action implementations.
+- [x] Step 2: Introduce the minimal helpers and cut the command actions over without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 104: Split remaining simple `program.ts` command bodies behind helper seams
+**Files:**
+- Modify: `apps/unclecode-cli/src/program.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires named helpers for config explain, auth status/logout, mode status/set, setup, sessions, and mcp list command bodies.
+- [x] Step 2: Introduce the minimal helpers and cut those command actions over without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
+### Task 105: Split remaining launch/navigation `program.ts` action bodies behind helper seams
+**Files:**
+- Modify: `apps/unclecode-cli/src/program.ts`
+- Modify: `tests/contracts/unclecode-cli.contract.test.mjs`
+- Modify: `.sisyphus/evidence/*`
+
+- [x] Step 1: Add failing contract coverage that requires named helpers for the root command, `tui`, `center`, and `work` action bodies.
+- [x] Step 2: Introduce the minimal helpers and cut those action bodies over without behavior changes.
+- [x] Step 3: Re-run targeted contract coverage before full verification.
+
 ## Verification
 
 - [x] Run targeted tests after each task before moving on.

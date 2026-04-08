@@ -23,15 +23,19 @@ export type SessionCenterBootstrapDependencies = {
     | undefined;
 };
 
-export function createSessionCenterEnvironment(input: {
-  workspaceRoot?: string;
-  env?: NodeJS.ProcessEnv;
-  userHomeDir?: string | undefined;
-}): {
+export type SessionCenterEnvironmentInput = {
+  readonly workspaceRoot?: string;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly userHomeDir?: string | undefined;
+};
+
+export type SessionCenterEnvironment = {
   readonly workspaceRoot: string;
   readonly env: NodeJS.ProcessEnv;
   readonly userHomeDir?: string | undefined;
-} {
+};
+
+export function createSessionCenterEnvironment(input: SessionCenterEnvironmentInput): SessionCenterEnvironment {
   const workspaceRoot = input.workspaceRoot ?? process.cwd();
   const env = input.env ?? process.env;
   const userHomeDir = input.userHomeDir ?? env.HOME;
@@ -47,9 +51,7 @@ async function loadOperationalModule(): Promise<OperationalModule> {
   return import("./operational.js");
 }
 
-export async function resolveSessionCenterDependencies(
-  deps?: SessionCenterBootstrapDependencies,
-): Promise<{
+type SessionCenterResolvedDependencies = {
   readonly buildHomeState: NonNullable<
     SessionCenterBootstrapDependencies["buildHomeState"]
   >;
@@ -62,7 +64,11 @@ export async function resolveSessionCenterDependencies(
   readonly runSession: NonNullable<
     SessionCenterBootstrapDependencies["runSession"]
   >;
-}> {
+};
+
+export async function resolveSessionCenterDependencies(
+  deps?: SessionCenterBootstrapDependencies,
+): Promise<SessionCenterResolvedDependencies> {
   const operational = deps?.buildHomeState && deps?.runAction && deps?.runSession
     ? undefined
     : await loadOperationalModule();
@@ -83,17 +89,13 @@ export async function resolveSessionCenterDependencies(
   };
 }
 
-export function createEmbeddedWorkPaneLoadInput<
-  WorkModule,
->(input: {
+export type EmbeddedWorkPaneLoadInput<WorkModule> = {
   readonly workspaceRoot: string;
   readonly initialSelectedSessionId?: string | undefined;
   readonly loadWorkModule?: (() => Promise<WorkModule>) | undefined;
-}): {
-  readonly workspaceRoot: string;
-  readonly initialSelectedSessionId?: string | undefined;
-  readonly loadWorkModule?: (() => Promise<WorkModule>) | undefined;
-} {
+};
+
+export function createEmbeddedWorkPaneLoadInput<WorkModule>(input: EmbeddedWorkPaneLoadInput<WorkModule>): EmbeddedWorkPaneLoadInput<WorkModule> {
   return {
     workspaceRoot: input.workspaceRoot,
     ...(input.initialSelectedSessionId !== undefined
@@ -103,14 +105,16 @@ export function createEmbeddedWorkPaneLoadInput<
   };
 }
 
-function createSessionCenterHomeStateLoader(input: {
+type SessionCenterHomeStateLoaderInput = {
   readonly workspaceRoot: string;
   readonly env: NodeJS.ProcessEnv;
   readonly userHomeDir?: string | undefined;
   readonly buildHomeState: NonNullable<
     SessionCenterBootstrapDependencies["buildHomeState"]
   >;
-}): () => Promise<TuiHomeState> {
+};
+
+function createSessionCenterHomeStateLoader(input: SessionCenterHomeStateLoaderInput): () => Promise<TuiHomeState> {
   return () =>
     input.buildHomeState({
       workspaceRoot: input.workspaceRoot,
@@ -119,7 +123,7 @@ function createSessionCenterHomeStateLoader(input: {
     });
 }
 
-function createSessionCenterRuntimeCallbackInput(input: {
+type SessionCenterRuntimeCallbackInput = {
   readonly workspaceRoot: string;
   readonly env: NodeJS.ProcessEnv;
   readonly userHomeDir?: string | undefined;
@@ -133,21 +137,9 @@ function createSessionCenterRuntimeCallbackInput(input: {
   readonly launchWorkSession: NonNullable<
     SessionCenterRenderOptions["launchWorkSession"]
   >;
-}): {
-  readonly workspaceRoot: string;
-  readonly env: NodeJS.ProcessEnv;
-  readonly userHomeDir?: string | undefined;
-  readonly runAction: NonNullable<
-    SessionCenterBootstrapDependencies["runAction"]
-  >;
-  readonly runSession: NonNullable<
-    SessionCenterBootstrapDependencies["runSession"]
-  >;
-  readonly refreshHomeState: () => Promise<TuiHomeState>;
-  readonly launchWorkSession: NonNullable<
-    SessionCenterRenderOptions["launchWorkSession"]
-  >;
-} {
+};
+
+function createSessionCenterRuntimeCallbackInput(input: SessionCenterRuntimeCallbackInput): SessionCenterRuntimeCallbackInput {
   return {
     workspaceRoot: input.workspaceRoot,
     env: input.env,
@@ -159,24 +151,12 @@ function createSessionCenterRuntimeCallbackInput(input: {
   };
 }
 
-function createSessionCenterRuntimeCallbacks(input: {
-  readonly workspaceRoot: string;
-  readonly env: NodeJS.ProcessEnv;
-  readonly userHomeDir?: string | undefined;
-  readonly runAction: NonNullable<
-    SessionCenterBootstrapDependencies["runAction"]
-  >;
-  readonly runSession: NonNullable<
-    SessionCenterBootstrapDependencies["runSession"]
-  >;
-  readonly refreshHomeState: () => Promise<TuiHomeState>;
-  readonly launchWorkSession: NonNullable<
-    SessionCenterRenderOptions["launchWorkSession"]
-  >;
-}): Pick<
+type SessionCenterRuntimeCallbacks = Pick<
   SessionCenterRenderOptions,
   "runAction" | "runSession" | "launchWorkSession" | "refreshHomeState"
-> {
+>;
+
+function createSessionCenterRuntimeCallbacks(input: SessionCenterRuntimeCallbackInput): SessionCenterRuntimeCallbacks {
   return {
     runAction: ({ actionId, prompt, onProgress }) =>
       input.runAction({
@@ -198,17 +178,16 @@ function createSessionCenterRuntimeCallbacks(input: {
   };
 }
 
-function createSessionCenterRenderInput(input: {
+type SessionCenterRenderInput = {
   readonly workspaceRoot: string;
   readonly homeState: TuiHomeState;
   readonly embeddedWorkPane?: EmbeddedWorkPaneRenderOptions<TuiHomeState> | undefined;
   readonly initialSelectedSessionId?: string | undefined;
   readonly contextLines?: readonly string[] | undefined;
-  readonly runtimeCallbacks: Pick<
-    SessionCenterRenderOptions,
-    "runAction" | "runSession" | "launchWorkSession" | "refreshHomeState"
-  >;
-}): {
+  readonly runtimeCallbacks: SessionCenterRuntimeCallbacks;
+};
+
+type SessionCenterDashboardRenderInput = {
   readonly workspaceRoot: string;
   readonly homeState: TuiHomeState;
   readonly embeddedWorkPane?: EmbeddedWorkPaneRenderOptions<TuiHomeState> | undefined;
@@ -218,7 +197,9 @@ function createSessionCenterRenderInput(input: {
   readonly runSession?: SessionCenterRenderOptions["runSession"];
   readonly launchWorkSession?: SessionCenterRenderOptions["launchWorkSession"];
   readonly refreshHomeState?: SessionCenterRenderOptions["refreshHomeState"];
-} {
+};
+
+function createSessionCenterRenderInput(input: SessionCenterRenderInput): SessionCenterDashboardRenderInput {
   return {
     workspaceRoot: input.workspaceRoot,
     homeState: input.homeState,
@@ -231,7 +212,7 @@ function createSessionCenterRenderInput(input: {
   };
 }
 
-export async function loadSessionCenterRenderInput(input: {
+export type SessionCenterRenderLoadInput = {
   readonly workspaceRoot: string;
   readonly env: NodeJS.ProcessEnv;
   readonly userHomeDir?: string | undefined;
@@ -252,7 +233,9 @@ export async function loadSessionCenterRenderInput(input: {
   readonly launchWorkSession: NonNullable<
     SessionCenterRenderOptions["launchWorkSession"]
   >;
-}): Promise<ReturnType<typeof createSessionCenterRenderInput>> {
+};
+
+export async function loadSessionCenterRenderInput(input: SessionCenterRenderLoadInput): Promise<SessionCenterDashboardRenderInput> {
   const createHomeState = createSessionCenterHomeStateLoader({
     workspaceRoot: input.workspaceRoot,
     env: input.env,

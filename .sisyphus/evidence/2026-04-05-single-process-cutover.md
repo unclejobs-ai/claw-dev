@@ -82,6 +82,19 @@ Record the remaining runtime boundaries after the TUI/orchestration redesign mig
 - `interactive-shell.ts` no longer owns interactive-surface input normalization inline; `apps/unclecode-cli/src/interactive-launch-inputs.ts` now owns shared bootstrap dependency typing plus `createWorkLaunchInput(...)` / `createSessionCenterLaunchInput(...)`.
 - `launchSessionCenter(...)` ownership now lives in `apps/unclecode-cli/src/session-center-launcher.ts`, and the obsolete `apps/unclecode-cli/src/interactive-shell.ts` router shim has now been deleted entirely because runtime ownership had already moved to dedicated owner seams.
 - Guardian narrowing now treats `session-center-launcher.ts`, `interactive-launch-inputs.ts`, and `work-bootstrap.ts` as the app shell/bootstrap impact class that used to be represented by `interactive-shell.ts`, so command + contract subsets stay honest after the router shim deletion.
+- `program.ts` no longer re-exports startup/work helper functions; repo-internal imports now consume `startup-paths.ts` and `work-bootstrap.ts` directly so the CLI program file owns only command construction and command actions.
+- App bootstrap input shapes are now exported from their owner seams too: `SessionCenterEnvironmentInput` lives in `session-center-bootstrap.ts` and `WorkLaunchInput` lives in `work-bootstrap.ts`, so downstream bootstrap helpers no longer repeat those shapes as anonymous object types.
+- `session-center-bootstrap.ts` now also names the remaining internal helper payloads (`EmbeddedWorkPaneLoadInput`, `SessionCenterHomeStateLoaderInput`, `SessionCenterRuntimeCallbackInput`, `SessionCenterRuntimeCallbacks`, `SessionCenterRenderInput`, `SessionCenterRenderLoadInput`) so bootstrap internals no longer drift behind repeated inline object signatures.
+- The same bootstrap seam now names its remaining result shapes too (`SessionCenterEnvironment`, `SessionCenterResolvedDependencies`, `SessionCenterDashboardRenderInput`), eliminating the last inline return-object signatures from the session-center bootstrap path.
+- `work-bootstrap.ts` now consumes the shared `EmbeddedWorkPaneLoadInput<WorkModule>` seam directly, and `startup-paths.ts` owns an explicit `DefaultWorkSessionStartupInput` alias, removing the last low-level bootstrap/startup inline input signatures in those owner files.
+- `interactive-launch-inputs.ts` now names its union members (`WorkInteractiveSurfaceInput`, `CenterInteractiveSurfaceInput`) instead of routing helper signatures through `Extract<InteractiveSurfaceInput, ...>`, which keeps launch-input ownership readable across the app bootstrap seams.
+- `program.ts` now names its remaining small auth helper shapes too (`BrowserOAuthCallbackInput`, `ResolvedOpenAIAuthStatus`) so helper signatures are no longer hiding inline object/derived status types.
+- The same program seam now names the remaining command option/flag payloads too (`WorkCommandOptions`, `ConfigExplainCommandOptions`, `ConfigExplainCliFlags`, `AuthLoginCommandOptions`, `DoctorCommandOptions`, `ResumeCommandOptions`, `ResearchRunCommandOptions`) instead of repeating inline handler option shapes.
+- `program.ts` now also routes both `tui` and `work` command forwarding through one `buildWorkCommandArgs(...)` helper, removing duplicated option-to-argv assembly logic without changing launch semantics.
+- The large auth-login command body is now split behind named helpers too (`resolveOpenAICredentialsPath`, `resolveAuthLoginRuntimeContext`, `handleApiKeyStdinLogin`, `runDeviceAuthLogin`, `runBrowserAuthLogin` plus their input/context aliases), so the command wiring reads as orchestration rather than inline OAuth branching.
+- `program.ts` now routes doctor, resume, research status, and research run through dedicated helpers (`handleDoctorCommand`, `handleResumeCommand`, `handleResearchStatusCommand`, `handleResearchRunCommand`) instead of leaving those report/resume flows inline inside Commander action bodies.
+- The remaining simple command bodies in `program.ts` are now helper-backed too (`handleConfigExplainCommand`, `handleAuthStatusCommand`, `handleAuthLogoutCommand`, `handleModeStatusCommand`, `handleModeSetCommand`, `handleSetupCommand`, `handleSessionsCommand`, `handleMcpListCommand`), leaving the Commander wiring as thin dispatch glue.
+- The last launch/navigation action bodies in `program.ts` are helper-backed as well (`handleRootCommand`, `handleTuiCommand`, `handleCenterCommand`, `handleWorkCommand`), so the file now trends toward command registration plus named execution seams instead of inline Commander closures.
 - Work-entry consumers now share `resolveWorkModuleLoader(...)`, so both `launchWorkEntrypoint(...)` and `loadEmbeddedWorkPane(...)` reuse one fallback path instead of repeating local `loadWorkEntrypointModule()` lambdas.
 - Guardian contract-aware narrowing now covers not only shell/bootstrap files but also public package barrel/index seams that materially affect owner-boundary contracts.
 - Guardian impact inference now treats the shared embedded-work TUI contract file (`packages/contracts/src/tui.ts`) as both a contracts surface and a TUI surface, so bounded executable review stays narrow but stops under-testing controller-shape changes.
@@ -199,6 +212,19 @@ Record the remaining runtime boundaries after the TUI/orchestration redesign mig
   - re-verified after moving interactive-surface input normalization into `apps/unclecode-cli/src/interactive-launch-inputs.ts`
   - re-verified after moving session-center launch orchestration into `apps/unclecode-cli/src/session-center-launcher.ts`
   - re-verified after deleting the obsolete `apps/unclecode-cli/src/interactive-shell.ts` router shim
+  - re-verified after removing leftover `program.ts` helper re-exports
+  - re-verified after exporting owner-seam bootstrap input types to remove anonymous shape drift
+  - re-verified after naming the remaining session-center bootstrap helper payload shapes
+  - re-verified after naming the remaining session-center bootstrap result shapes
+  - re-verified after cutting work-bootstrap/startup-path inputs over to owner-seam aliases
+  - re-verified after naming the interactive launch union member aliases
+  - re-verified after naming the remaining small program-helper aliases
+  - re-verified after naming the remaining program command option aliases
+  - re-verified after deduplicating work/tui forwarded-arg assembly in `program.ts`
+  - re-verified after splitting the auth-login body behind named helper seams
+  - re-verified after splitting doctor/resume/research command bodies behind named helper seams
+  - re-verified after splitting the remaining simple `program.ts` command bodies behind helper seams
+  - re-verified after splitting the remaining launch/navigation `program.ts` action bodies behind helper seams
   - re-verified after extending guardian narrowing to the new app bootstrap seams
   - re-verified after extracting shared work-module fallback resolution into `resolveWorkModuleLoader(...)`
 - `node --conditions=source --import tsx --test tests/work/guardian-checks.test.mjs`

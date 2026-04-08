@@ -1,35 +1,34 @@
 import type {
+  SessionCenterEnvironmentInput,
   SessionCenterBootstrapDependencies,
 } from "./session-center-bootstrap.js";
-import type { WorkModule } from "./work-bootstrap.js";
+import type { WorkLaunchInput, WorkModule } from "./work-bootstrap.js";
 
 export type SharedBootstrapDependencies = SessionCenterBootstrapDependencies & {
   readonly loadWorkModule?: (() => Promise<WorkModule>) | undefined;
 };
 
-export type SessionCenterLaunchInput = {
-  readonly workspaceRoot?: string;
-  readonly env?: NodeJS.ProcessEnv;
-  readonly userHomeDir?: string | undefined;
+export type SessionCenterLaunchInput = SessionCenterEnvironmentInput & {
   readonly initialSelectedSessionId?: string | undefined;
   readonly contextLines?: readonly string[] | undefined;
 };
 
-export type InteractiveSurfaceInput =
-  | {
-      readonly kind: "work";
-      readonly forwardedArgs: readonly string[];
-      readonly callerCwd?: string | undefined;
-    }
-  | ({ readonly kind: "center" } & SessionCenterLaunchInput);
+export type WorkInteractiveSurfaceInput = {
+  readonly kind: "work";
+  readonly forwardedArgs: readonly string[];
+  readonly callerCwd?: string | undefined;
+};
+
+export type CenterInteractiveSurfaceInput =
+  { readonly kind: "center" } & SessionCenterLaunchInput;
+
+export type InteractiveSurfaceInput = WorkInteractiveSurfaceInput |
+  CenterInteractiveSurfaceInput;
 
 export function createWorkLaunchInput(
-  input: Extract<InteractiveSurfaceInput, { kind: "work" }>,
+  input: WorkInteractiveSurfaceInput,
   deps?: SharedBootstrapDependencies,
-): {
-  readonly callerCwd?: string;
-  readonly loadModule?: (() => Promise<WorkModule>) | undefined;
-} {
+): WorkLaunchInput {
   return {
     ...(input.callerCwd ? { callerCwd: input.callerCwd } : {}),
     ...(deps?.loadWorkModule ? { loadModule: deps.loadWorkModule } : {}),
@@ -37,7 +36,7 @@ export function createWorkLaunchInput(
 }
 
 export function createSessionCenterLaunchInput(
-  input: Extract<InteractiveSurfaceInput, { kind: "center" }>,
+  input: CenterInteractiveSurfaceInput,
 ): SessionCenterLaunchInput {
   return {
     ...(input.workspaceRoot !== undefined

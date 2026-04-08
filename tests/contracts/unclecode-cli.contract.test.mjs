@@ -5,11 +5,9 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { resolveFastCliPath } from "../../apps/unclecode-cli/src/fast-cli.ts";
-import {
-  createUncleCodeProgram,
-  shouldLaunchDefaultWorkSession,
-} from "../../apps/unclecode-cli/src/program.ts";
+import { createUncleCodeProgram } from "../../apps/unclecode-cli/src/program.ts";
 import { launchSessionCenter } from "../../apps/unclecode-cli/src/session-center-launcher.ts";
+import { shouldLaunchDefaultWorkSession } from "../../apps/unclecode-cli/src/startup-paths.ts";
 import { launchWorkEntrypoint } from "../../apps/unclecode-cli/src/work-bootstrap.ts";
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -111,6 +109,10 @@ test("startup router keeps interactive boot behind dynamic imports without a wor
     ),
     "utf8",
   );
+  const startupPathsSource = readFileSync(
+    path.join(workspaceRoot, "apps/unclecode-cli/src/startup-paths.ts"),
+    "utf8",
+  );
   const programSource = readFileSync(
     path.join(workspaceRoot, "apps/unclecode-cli/src/program.ts"),
     "utf8",
@@ -151,6 +153,204 @@ test("startup router keeps interactive boot behind dynamic imports without a wor
   assert.doesNotMatch(programSource, /from\s+"\.\/interactive-shell\.js"/);
   assert.match(programSource, /from\s+"\.\/work-bootstrap\.js"/);
   assert.match(programSource, /from\s+"\.\/session-center-launcher\.js"/);
+  assert.match(programSource, /type\s+BrowserOAuthCallbackInput\s*=\s*\{/);
+  assert.match(
+    programSource,
+    /type\s+ResolvedOpenAIAuthStatus\s*=\s*Awaited<\s*ReturnType<typeof\s+resolveOpenAIAuthStatus>\s*>/,
+  );
+  assert.match(
+    programSource,
+    /waitForBrowserOAuthCallback\(input:\s*BrowserOAuthCallbackInput\)/,
+  );
+  assert.match(
+    programSource,
+    /formatLogoutResult\(status:\s*ResolvedOpenAIAuthStatus\)/,
+  );
+  assert.match(programSource, /type\s+WorkCommandOptions\s*=\s*\{/);
+  assert.match(programSource, /type\s+ConfigExplainCommandOptions\s*=\s*\{/);
+  assert.match(programSource, /type\s+ConfigExplainCliFlags\s*=\s*\{/);
+  assert.match(programSource, /type\s+AuthLoginCommandOptions\s*=\s*\{/);
+  assert.match(programSource, /type\s+DoctorCommandOptions\s*=\s*\{/);
+  assert.match(programSource, /type\s+ResumeCommandOptions\s*=\s*\{/);
+  assert.match(programSource, /type\s+ResearchRunCommandOptions\s*=\s*\{/);
+  assert.match(programSource, /type\s+AuthLoginRuntimeContext\s*=\s*\{/);
+  assert.match(programSource, /type\s+ApiKeyStdinLoginInput\s*=\s*\{/);
+  assert.match(programSource, /type\s+DeviceAuthLoginInput\s*=\s*\{/);
+  assert.match(programSource, /type\s+BrowserAuthLoginInput\s*=\s*\{/);
+  assert.match(
+    programSource,
+    /function\s+resolveOpenAICredentialsPath\(\):\s*string/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+resolveAuthLoginRuntimeContext\(\s*options:\s*AuthLoginCommandOptions\s*\):\s*Promise<AuthLoginRuntimeContext>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleApiKeyStdinLogin\(\s*input:\s*ApiKeyStdinLoginInput\s*\):\s*Promise<boolean>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+runDeviceAuthLogin\(\s*input:\s*DeviceAuthLoginInput\s*\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+runBrowserAuthLogin\(\s*input:\s*BrowserAuthLoginInput\s*\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /function\s+buildWorkCommandArgs\(\s*promptParts:\s*readonly string\[],\s*options:\s*WorkCommandOptions\s*\):\s*string\[]/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleRootCommand\(program:\s*Command\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleTuiCommand\(options:\s*WorkCommandOptions\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleCenterCommand\(\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleWorkCommand\(promptParts:\s*string\[],\s*options:\s*WorkCommandOptions\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /program\.action\(async \(\) => \{[\s\S]*await\s+handleRootCommand\(program\)/,
+  );
+  assert.match(
+    programSource,
+    /\.command\("tui"\)[\s\S]*\.action\(async \(_promptParts: string\[], options: WorkCommandOptions\) => \{[\s\S]*await\s+handleTuiCommand\(options\)/,
+  );
+  assert.match(
+    programSource,
+    /\.command\("center"\)[\s\S]*\.action\(async \(\) => \{[\s\S]*await\s+handleCenterCommand\(\)/,
+  );
+  assert.match(
+    programSource,
+    /\.action\(async \(promptParts: string\[], options: WorkCommandOptions, _command\) => \{[\s\S]*await\s+handleWorkCommand\(promptParts, options\)/,
+  );
+  assert.match(
+    programSource,
+    /\.action\(\(options: ConfigExplainCommandOptions\)[\s\S]*handleConfigExplainCommand\(options\)/,
+  );
+  assert.match(
+    programSource,
+    /const\s+cliFlags:\s*ConfigExplainCliFlags\s*=\s*\{/,
+  );
+  assert.match(
+    programSource,
+    /\.action\(async \(options: AuthLoginCommandOptions\)[\s\S]*const\s+credentialsPath\s*=\s*resolveOpenAICredentialsPath\(\)/,
+  );
+  assert.match(
+    programSource,
+    /\.action\(async \(options: AuthLoginCommandOptions\)[\s\S]*await\s+handleApiKeyStdinLogin\(/,
+  );
+  assert.match(
+    programSource,
+    /\.action\(async \(options: AuthLoginCommandOptions\)[\s\S]*const\s+runtimeContext\s*=\s*await\s+resolveAuthLoginRuntimeContext\(options\)/,
+  );
+  assert.match(
+    programSource,
+    /\.action\(async \(options: AuthLoginCommandOptions\)[\s\S]*await\s+runDeviceAuthLogin\(/,
+  );
+  assert.match(
+    programSource,
+    /\.action\(async \(options: AuthLoginCommandOptions\)[\s\S]*await\s+runBrowserAuthLogin\(/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleDoctorCommand\(options:\s*DoctorCommandOptions\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleResumeCommand\(sessionId:\s*string,\s*options:\s*ResumeCommandOptions\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleResearchStatusCommand\(\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleResearchRunCommand\(promptParts:\s*string\[],\s*options:\s*ResearchRunCommandOptions\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /function\s+handleConfigExplainCommand\(options:\s*ConfigExplainCommandOptions\):\s*void/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleAuthStatusCommand\(\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleAuthLogoutCommand\(\):\s*Promise<void>/,
+  );
+  assert.match(programSource, /function\s+handleModeStatusCommand\(\):\s*void/);
+  assert.match(
+    programSource,
+    /async\s+function\s+handleModeSetCommand\(mode:\s*string\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleSetupCommand\(\):\s*Promise<void>/,
+  );
+  assert.match(
+    programSource,
+    /async\s+function\s+handleSessionsCommand\(\):\s*Promise<void>/,
+  );
+  assert.match(programSource, /function\s+handleMcpListCommand\(\):\s*void/);
+  assert.match(
+    programSource,
+    /auth[\s\S]*\.command\("status"\)[\s\S]*\.action\(async \(\) => \{[\s\S]*await\s+handleAuthStatusCommand\(\)/,
+  );
+  assert.match(
+    programSource,
+    /auth[\s\S]*\.command\("logout"\)[\s\S]*\.action\(async \(\) => \{[\s\S]*await\s+handleAuthLogoutCommand\(\)/,
+  );
+  assert.match(
+    programSource,
+    /mode[\s\S]*\.command\("status"\)[\s\S]*\.action\(\(\) => \{[\s\S]*handleModeStatusCommand\(\)/,
+  );
+  assert.match(
+    programSource,
+    /mode[\s\S]*\.command\("set <mode>"\)[\s\S]*\.action\(async \(mode: string\) => \{[\s\S]*await\s+handleModeSetCommand\(mode\)/,
+  );
+  assert.match(
+    programSource,
+    /setup[\s\S]*\.action\(async \(\) => \{[\s\S]*await\s+handleSetupCommand\(\)/,
+  );
+  assert.match(
+    programSource,
+    /sessions[\s\S]*\.action\(async \(\) => \{[\s\S]*await\s+handleSessionsCommand\(\)/,
+  );
+  assert.match(
+    programSource,
+    /mcp[\s\S]*\.command\("list"\)[\s\S]*\.action\(\(\) => \{[\s\S]*handleMcpListCommand\(\)/,
+  );
+  assert.match(
+    programSource,
+    /\.action\(async \(options: DoctorCommandOptions\)[\s\S]*await\s+handleDoctorCommand\(options\)/,
+  );
+  assert.match(
+    programSource,
+    /\.action\(async \(sessionId: string, options: ResumeCommandOptions\)[\s\S]*await\s+handleResumeCommand\(sessionId, options\)/,
+  );
+  assert.match(
+    programSource,
+    /research[\s\S]*\.command\("status"\)[\s\S]*\.action\(async \(\) => \{[\s\S]*await\s+handleResearchStatusCommand\(\)/,
+  );
+  assert.match(
+    programSource,
+    /\.action\(async \(promptParts: string\[], options: ResearchRunCommandOptions\)[\s\S]*await\s+handleResearchRunCommand\(promptParts, options\)/,
+  );
+  assert.doesNotMatch(
+    programSource,
+    /export\s*\{\s*launchWorkEntrypoint,\s*shouldLaunchDefaultWorkSession,\s*withWorkCwd\s*\}/,
+  );
   assert.match(
     sessionCenterLauncherSource,
     /import\s+\{\s*createSessionCenterDashboardRenderOptions\s*\}\s+from\s+"@unclecode\/tui"/,
@@ -167,7 +367,7 @@ test("startup router keeps interactive boot behind dynamic imports without a wor
   assert.match(workBootstrapSource, /function\s+resolveWorkModuleLoader\(/);
   assert.match(
     workBootstrapSource,
-    /async\s+function\s+loadEmbeddedWorkPane\(/,
+    /async\s+function\s+loadEmbeddedWorkPane\(input:\s*EmbeddedWorkPaneLoadInput<WorkModule>\)/,
   );
   assert.match(
     sessionCenterLauncherSource,
@@ -176,6 +376,38 @@ test("startup router keeps interactive boot behind dynamic imports without a wor
   assert.match(
     sessionCenterLauncherSource,
     /const\s+\{\s*workspaceRoot,\s*env,\s*userHomeDir\s*\}\s*=\s*createSessionCenterEnvironment\(input\)/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /createEmbeddedWorkPaneLoadInput<\s*WorkModule\s*>\(input:\s*EmbeddedWorkPaneLoadInput<WorkModule>\)/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /createSessionCenterEnvironment\(input:\s*SessionCenterEnvironmentInput\):\s*SessionCenterEnvironment/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /resolveSessionCenterDependencies\([\s\S]*\):\s*Promise<SessionCenterResolvedDependencies>/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /createSessionCenterHomeStateLoader\(input:\s*SessionCenterHomeStateLoaderInput\)/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /createSessionCenterRuntimeCallbackInput\(input:\s*SessionCenterRuntimeCallbackInput\)/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /createSessionCenterRuntimeCallbacks\(input:\s*SessionCenterRuntimeCallbackInput\)/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /createSessionCenterRenderInput\(input:\s*SessionCenterRenderInput\):\s*SessionCenterDashboardRenderInput/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /loadSessionCenterRenderInput\(input:\s*SessionCenterRenderLoadInput\):\s*Promise<SessionCenterDashboardRenderInput>/,
   );
   assert.match(
     sessionCenterBootstrapSource,
@@ -234,6 +466,95 @@ test("startup router keeps interactive boot behind dynamic imports without a wor
     interactiveLaunchInputsSource,
     /type\s+SharedBootstrapDependencies\s*=\s*SessionCenterBootstrapDependencies\s*&/,
   );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /export\s+type\s+SessionCenterEnvironmentInput\s*=\s*\{/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /export\s+type\s+SessionCenterEnvironment\s*=\s*\{/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /type\s+SessionCenterResolvedDependencies\s*=\s*\{/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /export\s+type\s+EmbeddedWorkPaneLoadInput<WorkModule>\s*=\s*\{/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /type\s+SessionCenterHomeStateLoaderInput\s*=\s*\{/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /type\s+SessionCenterRuntimeCallbackInput\s*=\s*\{/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /type\s+SessionCenterRenderInput\s*=\s*\{/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /type\s+SessionCenterDashboardRenderInput\s*=\s*\{/,
+  );
+  assert.match(
+    sessionCenterBootstrapSource,
+    /export\s+type\s+SessionCenterRenderLoadInput\s*=\s*\{/,
+  );
+  assert.match(workBootstrapSource, /export\s+type\s+WorkLaunchInput\s*=\s*\{/);
+  assert.match(
+    workBootstrapSource,
+    /import\s+type\s+\{[\s\S]*EmbeddedWorkPaneLoadInput[\s\S]*TuiHomeState[\s\S]*\}\s+from\s+"\.\/session-center-bootstrap\.js"/,
+  );
+  assert.match(
+    startupPathsSource,
+    /export\s+type\s+DefaultWorkSessionStartupInput\s*=\s*\{/,
+  );
+  assert.match(
+    startupPathsSource,
+    /shouldLaunchDefaultWorkSession\(input:\s*DefaultWorkSessionStartupInput\)/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /import\s+type\s+\{[\s\S]*SessionCenterEnvironmentInput[\s\S]*SessionCenterBootstrapDependencies[\s\S]*\}\s+from\s+"\.\/session-center-bootstrap\.js"/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /import\s+type\s+\{[\s\S]*WorkLaunchInput[\s\S]*WorkModule[\s\S]*\}\s+from\s+"\.\/work-bootstrap\.js"/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /type\s+SessionCenterLaunchInput\s*=\s*SessionCenterEnvironmentInput\s*&\s*\{/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /export\s+type\s+WorkInteractiveSurfaceInput\s*=\s*\{/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /export\s+type\s+CenterInteractiveSurfaceInput\s*=\s*\{\s*readonly\s+kind:\s*"center"\s*\}\s*&\s*SessionCenterLaunchInput/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /export\s+type\s+InteractiveSurfaceInput\s*=\s*WorkInteractiveSurfaceInput\s*\|\s*CenterInteractiveSurfaceInput/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /createWorkLaunchInput\(\s*input:\s*WorkInteractiveSurfaceInput/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /createSessionCenterLaunchInput\(\s*input:\s*CenterInteractiveSurfaceInput/,
+  );
+  assert.doesNotMatch(
+    interactiveLaunchInputsSource,
+    /Extract<InteractiveSurfaceInput,\s*\{\s*kind:\s*"(?:work|center)"\s*\}>/,
+  );
+  assert.match(
+    interactiveLaunchInputsSource,
+    /createWorkLaunchInput[\s\S]*\):\s*WorkLaunchInput\s*\{/,
+  );
   assert.doesNotMatch(
     workBootstrapSource,
     /launchWorkEntrypoint[\s\S]*\(input\?\.loadModule\s*\?\?\s*\(\)\s*=>\s*loadWorkEntrypointModule\(\)\)\(\)/,
@@ -242,10 +563,7 @@ test("startup router keeps interactive boot behind dynamic imports without a wor
     workBootstrapSource,
     /loadEmbeddedWorkPane[\s\S]*\(loadWorkModule\s*\?\?\s*\(\)\s*=>\s*loadWorkEntrypointModule\(\)\)\(\)/,
   );
-  assert.equal(
-    existsSync(interactiveShellPath),
-    false,
-  );
+  assert.equal(existsSync(interactiveShellPath), false);
   assert.match(
     workBootstrapSource,
     /dist-work[\s\S]*apps[\s\S]*unclecode-cli[\s\S]*src[\s\S]*work-entry\.js/,

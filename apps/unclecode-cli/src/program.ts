@@ -44,7 +44,84 @@ import { launchWorkEntrypoint, withWorkCwd } from "./work-bootstrap.js";
 
 const UNCLECODE_CLI_VERSION = "0.1.0";
 
-async function waitForBrowserOAuthCallback(input: { redirectUri: string }): Promise<string> {
+type BrowserOAuthCallbackInput = {
+  readonly redirectUri: string;
+};
+
+type ResolvedOpenAIAuthStatus = Awaited<
+  ReturnType<typeof resolveOpenAIAuthStatus>
+>;
+
+type WorkCommandOptions = {
+  readonly provider?: string;
+  readonly model?: string;
+  readonly reasoning?: string;
+  readonly cwd?: string;
+  readonly sessionId?: string;
+  readonly tools?: boolean;
+  readonly help?: boolean;
+};
+
+type ConfigExplainCommandOptions = {
+  readonly mode?: string;
+  readonly model?: string;
+};
+
+type ConfigExplainCliFlags = {
+  readonly mode?: ModeProfileId;
+  readonly model?: string;
+};
+
+type AuthLoginCommandOptions = {
+  readonly browser?: boolean;
+  readonly device?: boolean;
+  readonly apiKeyStdin?: boolean;
+  readonly apiKey?: string;
+  readonly org?: string;
+  readonly project?: string;
+  readonly print?: boolean;
+};
+
+type AuthLoginRuntimeContext = {
+  readonly browserClientId?: string;
+  readonly reusableClientId?: string;
+  readonly deviceClientId?: string;
+  readonly shouldUseDevice: boolean;
+  readonly redirectUri: string;
+  readonly baseUrl?: string;
+};
+
+type ApiKeyStdinLoginInput = {
+  readonly options: AuthLoginCommandOptions;
+  readonly credentialsPath: string;
+};
+
+type DeviceAuthLoginInput = {
+  readonly runtimeContext: AuthLoginRuntimeContext;
+  readonly credentialsPath: string;
+};
+
+type BrowserAuthLoginInput = {
+  readonly runtimeContext: AuthLoginRuntimeContext;
+  readonly options: AuthLoginCommandOptions;
+  readonly credentialsPath: string;
+};
+
+type DoctorCommandOptions = {
+  readonly verbose?: boolean;
+  readonly json?: boolean;
+};
+
+type ResumeCommandOptions = {
+  readonly verbose?: boolean;
+  readonly json?: boolean;
+};
+
+type ResearchRunCommandOptions = {
+  readonly json?: boolean;
+};
+
+async function waitForBrowserOAuthCallback(input: BrowserOAuthCallbackInput): Promise<string> {
   const redirect = new URL(input.redirectUri);
   const hostname = redirect.hostname;
   const port = Number(redirect.port || (redirect.protocol === "https:" ? 443 : 80));
@@ -86,7 +163,136 @@ async function readApiKeyFromStdin(): Promise<string> {
   });
 }
 
-function formatLogoutResult(status: Awaited<ReturnType<typeof resolveOpenAIAuthStatus>>): readonly string[] {
+function resolveOpenAICredentialsPath(): string {
+  return process.env.UNCLECODE_OPENAI_CREDENTIALS_PATH?.trim() ||
+    path.join(os.homedir(), ".unclecode", "credentials", "openai.json");
+}
+
+async function resolveAuthLoginRuntimeContext(options: AuthLoginCommandOptions): Promise<AuthLoginRuntimeContext> {
+  const browserClientId = process.env.OPENAI_OAUTH_CLIENT_ID?.trim();
+  const reusableClientId = await resolveReusableOpenAIOAuthClientId({ env: process.env });
+  const deviceClientId = reusableClientId ?? browserClientId;
+  const shouldUseDevice = Boolean(
+    options.device || (!options.browser && !options.print && !browserClientId && deviceClientId),
+  );
+  const redirectUri =
+    process.env.OPENAI_OAUTH_REDIRECT_URI?.trim() || "http://localhost:7777/callback";
+  const baseUrl = process.env.OPENAI_OAUTH_BASE_URL?.trim();
+
+  return {
+    ...(browserClientId ? { browserClientId } : {}),
+    ...(reusableClientId ? { reusableClientId } : {}),
+    ...(deviceClientId ? { deviceClientId } : {}),
+    shouldUseDevice,
+    redirectUri,
+    ...(baseUrl ? { baseUrl } : {}),
+  };
+}
+
+async function handleApiKeyStdinLogin(input: ApiKeyStdinLoginInput): Promise<boolean> {
+  if (input.options.apiKey?.trim()) {
+    throw new Error("Passing API keys on argv is disabled. Use `unclecode auth login --api-key-stdin` and pipe the key on stdin.");
+  }
+
+  if (!input.options.apiKeyStdin) {
+    return false;
+  }
+
+  if (input.options.browser || input.options.device) {
+    throw new Error("Choose exactly one auth login method: OAuth browser, device login, or --api-key-stdin.");
+  }
+
+  const apiKey = await readApiKeyFromStdin();
+  if (!apiKey) {
+    throw new Error("No API key received on stdin.");
+  }
+
+  await writeOpenAICredentials({
+    credentialsPath: input.credentialsPath,
+    credentials: {
+      authType: "api-key",
+      apiKey,
+      organizationId: input.options.org?.trim() || null,
+      projectId: input.options.project?.trim() || null,
+    },
+  });
+  process.stdout.write("API key login saved.\n");
+  process.stdout.write("Source: api-key-file\n");
+  return true;
+}
+
+async function runDeviceAuthLogin(input: DeviceAuthLoginInput): Promise<void> {
+  const deviceLoginClientId = input.runtimeContext.deviceClientId;
+  if (!deviceLoginClientId) {
+    throw new Error("Device OAuth requires a client id.");
+  }
+
+  process.stdout.write("Starting device login…\n");
+
+  if (!input.runtimeContext.browserClientId && input.runtimeContext.reusableClientId) {
+    await completeOpenAICodexDeviceLogin({
+      clientId: deviceLoginClientId,
+      credentialsPath: input.credentialsPath,
+      ...(input.runtimeContext.baseUrl ? { baseUrl: input.runtimeContext.baseUrl } : {}),
+      onDeviceCode: (info) => {
+        process.stdout.write(`Please visit ${info.verificationUri} and enter code: ${info.userCode}\n`);
+      },
+    });
+  } else {
+    await completeOpenAIDeviceLogin({
+      clientId: deviceLoginClientId,
+      scopes: ["openid", "profile", "offline_access", "model.request", "api.model.read"],
+      credentialsPath: input.credentialsPath,
+      ...(input.runtimeContext.baseUrl ? { baseUrl: input.runtimeContext.baseUrl } : {}),
+      onDeviceCode: (info) => {
+        process.stdout.write(`Please visit ${info.verificationUri} and enter code: ${info.userCode}\n`);
+      },
+    });
+  }
+
+  process.stdout.write("Login successful.\n");
+}
+
+async function runBrowserAuthLogin(input: BrowserAuthLoginInput): Promise<void> {
+  const browserPkceClientId = input.runtimeContext.browserClientId;
+  if (!browserPkceClientId) {
+    throw new Error("Browser OAuth needs OPENAI_OAUTH_CLIENT_ID. Reused Codex auth can start device OAuth instead. Run `unclecode auth login --device`.");
+  }
+
+  const pkce = createOpenAIPkcePair();
+  const url = buildOpenAIAuthorizationUrl({
+    clientId: browserPkceClientId,
+    redirectUri: input.runtimeContext.redirectUri,
+    state: pkce.state,
+    codeChallenge: pkce.codeChallenge,
+    scopes: ["openid", "profile", "offline_access", "model.request", "api.model.read"],
+    ...(input.runtimeContext.baseUrl ? { baseUrl: input.runtimeContext.baseUrl } : {}),
+  });
+
+  if (input.options.print) {
+    process.stdout.write(`${url.toString()}\n`);
+    return;
+  }
+
+  process.stdout.write(`${url.toString()}\n`);
+  process.stdout.write(`Waiting for OAuth callback on ${input.runtimeContext.redirectUri}\n`);
+
+  const callbackUrl = await waitForBrowserOAuthCallback({
+    redirectUri: input.runtimeContext.redirectUri,
+  });
+  await completeOpenAIBrowserLogin({
+    clientId: browserPkceClientId,
+    redirectUri: input.runtimeContext.redirectUri,
+    callbackUrl,
+    expectedState: pkce.state,
+    codeVerifier: pkce.codeVerifier,
+    credentialsPath: input.credentialsPath,
+    ...(input.runtimeContext.baseUrl ? { baseUrl: input.runtimeContext.baseUrl } : {}),
+  });
+  process.stdout.write("Login successful.\n");
+}
+
+function formatLogoutResult(status: ResolvedOpenAIAuthStatus): readonly string[] {
   if (status.activeSource === "none") {
     return ["Signed out.", "Auth: none"];
   }
@@ -94,7 +300,187 @@ function formatLogoutResult(status: Awaited<ReturnType<typeof resolveOpenAIAuthS
   return ["Local credentials cleared.", `Auth: ${status.activeSource}`];
 }
 
-export { launchWorkEntrypoint, shouldLaunchDefaultWorkSession, withWorkCwd };
+function buildWorkCommandArgs(promptParts: readonly string[], options: WorkCommandOptions): string[] {
+  const forwardedArgs: string[] = [];
+  if (options.help) forwardedArgs.push("--help");
+  if (options.tools) forwardedArgs.push("--tools");
+  if (options.cwd) forwardedArgs.push("--cwd", options.cwd);
+  if (options.provider) forwardedArgs.push("--provider", options.provider);
+  if (options.model) forwardedArgs.push("--model", options.model);
+  if (options.reasoning) forwardedArgs.push("--reasoning", options.reasoning);
+  if (options.sessionId) forwardedArgs.push("--session-id", options.sessionId);
+  forwardedArgs.push(...promptParts);
+  return forwardedArgs;
+}
+
+async function handleRootCommand(program: Command): Promise<void> {
+  if (
+    shouldLaunchDefaultWorkSession({
+      args: process.argv.slice(2),
+      stdinIsTTY: process.stdin.isTTY ?? false,
+      stdoutIsTTY: process.stdout.isTTY ?? false,
+    })
+  ) {
+    await launchWorkEntrypoint([]);
+    return;
+  }
+
+  program.outputHelp();
+}
+
+async function handleTuiCommand(options: WorkCommandOptions): Promise<void> {
+  await launchWorkEntrypoint(buildWorkCommandArgs([], options));
+}
+
+async function handleCenterCommand(): Promise<void> {
+  await launchSessionCenter({
+    workspaceRoot: process.cwd(),
+    env: process.env,
+  });
+}
+
+async function handleWorkCommand(promptParts: string[], options: WorkCommandOptions): Promise<void> {
+  await launchWorkEntrypoint(buildWorkCommandArgs(promptParts, options));
+}
+
+async function handleDoctorCommand(options: DoctorCommandOptions): Promise<void> {
+  if (options.json) {
+    const { report } = await buildDoctorReportData({
+      workspaceRoot: process.cwd(),
+      env: process.env,
+      verbose: true,
+    });
+    process.stdout.write(`${JSON.stringify(report)}\n`);
+    return;
+  }
+
+  process.stdout.write(
+    `${await buildDoctorReport({ workspaceRoot: process.cwd(), env: process.env, ...(options.verbose ? { verbose: true } : {}) })}\n`,
+  );
+}
+
+async function handleResumeCommand(sessionId: string, options: ResumeCommandOptions): Promise<void> {
+  const { lines, report } = await buildResumeSummaryData({
+    workspaceRoot: process.cwd(),
+    env: process.env,
+    sessionId,
+  });
+
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(report)}\n`);
+    return;
+  }
+
+  if ((process.stdin.isTTY ?? false) && (process.stdout.isTTY ?? false)) {
+    await launchSessionCenter({
+      workspaceRoot: process.cwd(),
+      env: process.env,
+      initialSelectedSessionId: sessionId,
+      contextLines: lines,
+    });
+    return;
+  }
+
+  process.stdout.write(`${lines.join("\n")}\n`);
+}
+
+async function handleResearchStatusCommand(): Promise<void> {
+  const userHomeDir = process.env.HOME;
+  process.stdout.write(
+    `${await buildResearchStatusReport({
+      workspaceRoot: process.cwd(),
+      env: process.env,
+      ...(userHomeDir ? { userHomeDir } : {}),
+    })}\n`,
+  );
+}
+
+async function handleResearchRunCommand(promptParts: string[], options: ResearchRunCommandOptions): Promise<void> {
+  const userHomeDir = process.env.HOME;
+  const { lines, report } = await runResearchPassData({
+    workspaceRoot: process.cwd(),
+    env: process.env,
+    prompt: promptParts.join(" "),
+    ...(userHomeDir ? { userHomeDir } : {}),
+  });
+
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(report)}\n`);
+    return;
+  }
+
+  process.stdout.write(`${lines.join("\n")}\n`);
+}
+
+function handleConfigExplainCommand(options: ConfigExplainCommandOptions): void {
+  const cliFlags: ConfigExplainCliFlags = {
+    ...(isModeProfileId(options.mode) ? { mode: options.mode } : {}),
+    ...(options.model ? { model: options.model } : {}),
+  };
+
+  const explanation = explainUncleCodeConfig({
+    workspaceRoot: process.cwd(),
+    env: process.env,
+    pluginOverlays: loadExtensionConfigOverlays({
+      workspaceRoot: process.cwd(),
+      ...(process.env.HOME ? { userHomeDir: process.env.HOME } : {}),
+    }),
+    cliFlags,
+  });
+
+  process.stdout.write(`${formatUncleCodeConfigExplanation(explanation)}\n`);
+}
+
+async function handleAuthStatusCommand(): Promise<void> {
+  const status = await resolveOpenAIAuthStatus({ env: process.env });
+  process.stdout.write(`${formatOpenAIAuthStatus(status)}\n`);
+}
+
+async function handleAuthLogoutCommand(): Promise<void> {
+  const credentialsPath = resolveOpenAICredentialsPath();
+  await clearOpenAICredentials({ credentialsPath });
+  const status = await resolveOpenAIAuthStatus({ env: process.env });
+  for (const line of formatLogoutResult(status)) {
+    process.stdout.write(`${line}\n`);
+  }
+}
+
+function handleModeStatusCommand(): void {
+  process.stdout.write(
+    `${formatModeStatusReport({ workspaceRoot: process.cwd(), env: process.env })}\n`,
+  );
+}
+
+async function handleModeSetCommand(mode: string): Promise<void> {
+  if (!isModeProfileId(mode)) {
+    throw new Error(`Unsupported mode: ${mode}`);
+  }
+
+  const configPath = await persistProjectMode(process.cwd(), mode);
+  process.stdout.write(`${formatModeSetReport(mode, configPath)}\n`);
+}
+
+async function handleSetupCommand(): Promise<void> {
+  process.stdout.write(
+    `${await buildSetupReport({ workspaceRoot: process.cwd(), env: process.env })}\n`,
+  );
+}
+
+async function handleSessionsCommand(): Promise<void> {
+  const items = await listSessions({ workspaceRoot: process.cwd(), env: process.env });
+  process.stdout.write(`${formatSessionsReport(items)}\n`);
+}
+
+function handleMcpListCommand(): void {
+  const userHomeDir = process.env.HOME;
+
+  process.stdout.write(
+    `${buildMcpListReport({
+      workspaceRoot: process.cwd(),
+      ...(userHomeDir ? { userHomeDir } : {}),
+    })}\n`,
+  );
+}
 
 export function createUncleCodeProgram(): Command {
   const program = new Command();
@@ -106,18 +492,7 @@ export function createUncleCodeProgram(): Command {
     .showHelpAfterError();
 
   program.action(async () => {
-    if (
-      shouldLaunchDefaultWorkSession({
-        args: process.argv.slice(2),
-        stdinIsTTY: process.stdin.isTTY ?? false,
-        stdoutIsTTY: process.stdout.isTTY ?? false,
-      })
-    ) {
-      await launchWorkEntrypoint([]);
-      return;
-    }
-
-    program.outputHelp();
+    await handleRootCommand(program);
   });
 
   program
@@ -132,26 +507,15 @@ export function createUncleCodeProgram(): Command {
     .option("--session-id <sessionId>")
     .option("--tools")
     .option("--help")
-    .action(async (_promptParts: string[], options: { provider?: string; model?: string; reasoning?: string; cwd?: string; sessionId?: string; tools?: boolean; help?: boolean }) => {
-      const forwardedArgs: string[] = [];
-      if (options.help) forwardedArgs.push("--help");
-      if (options.tools) forwardedArgs.push("--tools");
-      if (options.cwd) forwardedArgs.push("--cwd", options.cwd);
-      if (options.provider) forwardedArgs.push("--provider", options.provider);
-      if (options.model) forwardedArgs.push("--model", options.model);
-      if (options.reasoning) forwardedArgs.push("--reasoning", options.reasoning);
-      if (options.sessionId) forwardedArgs.push("--session-id", options.sessionId);
-      await launchWorkEntrypoint(forwardedArgs);
+    .action(async (_promptParts: string[], options: WorkCommandOptions) => {
+      await handleTuiCommand(options);
     });
 
   program
     .command("center")
     .description("Launch the secondary session center")
     .action(async () => {
-      await launchSessionCenter({
-        workspaceRoot: process.cwd(),
-        env: process.env,
-      });
+      await handleCenterCommand();
     });
 
   const configCommand = program.command("config").description("Inspect effective UncleCode config");
@@ -170,26 +534,8 @@ export function createUncleCodeProgram(): Command {
       ),
     )
     .option("--model <model>", "Override the configured model for this invocation")
-    .action((options: { mode?: string; model?: string }) => {
-      const cliFlags: {
-        mode?: ModeProfileId;
-        model?: string;
-      } = {
-        ...(isModeProfileId(options.mode) ? { mode: options.mode } : {}),
-        ...(options.model ? { model: options.model } : {}),
-      };
-
-      const explanation = explainUncleCodeConfig({
-        workspaceRoot: process.cwd(),
-        env: process.env,
-        pluginOverlays: loadExtensionConfigOverlays({
-          workspaceRoot: process.cwd(),
-          ...(process.env.HOME ? { userHomeDir: process.env.HOME } : {}),
-        }),
-        cliFlags,
-      });
-
-      process.stdout.write(`${formatUncleCodeConfigExplanation(explanation)}\n`);
+    .action((options: ConfigExplainCommandOptions) => {
+      handleConfigExplainCommand(options);
     });
 
   authCommand
@@ -202,45 +548,14 @@ export function createUncleCodeProgram(): Command {
     .option("--org <org>", "Store default OpenAI organization context with an API key login")
     .option("--project <project>", "Store default OpenAI project context with an API key login")
     .option("--print", "Print the login URL explicitly (default browser behavior today)")
-    .action(async (options: { browser?: boolean; device?: boolean; apiKeyStdin?: boolean; apiKey?: string; org?: string; project?: string; print?: boolean }) => {
-      const credentialsPath =
-        process.env.UNCLECODE_OPENAI_CREDENTIALS_PATH?.trim() ||
-        path.join(os.homedir(), ".unclecode", "credentials", "openai.json");
-
-      if (options.apiKey?.trim()) {
-        throw new Error("Passing API keys on argv is disabled. Use `unclecode auth login --api-key-stdin` and pipe the key on stdin.");
-      }
-
-      if (options.apiKeyStdin) {
-        if (options.browser || options.device) {
-          throw new Error("Choose exactly one auth login method: OAuth browser, device login, or --api-key-stdin.");
-        }
-
-        const apiKey = await readApiKeyFromStdin();
-        if (!apiKey) {
-          throw new Error("No API key received on stdin.");
-        }
-
-        await writeOpenAICredentials({
-          credentialsPath,
-          credentials: {
-            authType: "api-key",
-            apiKey,
-            organizationId: options.org?.trim() || null,
-            projectId: options.project?.trim() || null,
-          },
-        });
-        process.stdout.write("API key login saved.\n");
-        process.stdout.write("Source: api-key-file\n");
+    .action(async (options: AuthLoginCommandOptions) => {
+      const credentialsPath = resolveOpenAICredentialsPath();
+      if (await handleApiKeyStdinLogin({ options, credentialsPath })) {
         return;
       }
 
-      const browserClientId = process.env.OPENAI_OAUTH_CLIENT_ID?.trim();
-      const reusableClientId = await resolveReusableOpenAIOAuthClientId({ env: process.env });
-      const deviceClientId = reusableClientId ?? browserClientId;
-      const shouldUseDevice = Boolean(options.device || (!options.browser && !options.print && !browserClientId && deviceClientId));
-
-      if (!browserClientId && !deviceClientId) {
+      const runtimeContext = await resolveAuthLoginRuntimeContext(options);
+      if (!runtimeContext.browserClientId && !runtimeContext.deviceClientId) {
         const status = await resolveOpenAIAuthStatus({ env: process.env });
         if (status.activeSource !== "none" && !status.isExpired) {
           process.stdout.write("Saved auth found.\n");
@@ -254,77 +569,16 @@ export function createUncleCodeProgram(): Command {
         throw new Error("OPENAI_OAUTH_CLIENT_ID is required for OAuth login. Existing ~/.codex/auth.json is reused automatically when present.");
       }
 
-      const redirectUri =
-        process.env.OPENAI_OAUTH_REDIRECT_URI?.trim() || "http://localhost:7777/callback";
-
-      if (options.browser || options.print) {
-        if (!browserClientId) {
-          throw new Error("Browser OAuth needs OPENAI_OAUTH_CLIENT_ID. Reused Codex auth can start device OAuth instead. Run `unclecode auth login --device`.");
-        }
+      if ((options.browser || options.print) && !runtimeContext.browserClientId) {
+        throw new Error("Browser OAuth needs OPENAI_OAUTH_CLIENT_ID. Reused Codex auth can start device OAuth instead. Run `unclecode auth login --device`.");
       }
 
-      if (shouldUseDevice) {
-        const deviceLoginClientId = deviceClientId!;
-        const baseUrl = process.env.OPENAI_OAUTH_BASE_URL?.trim();
-
-        process.stdout.write("Starting device login…\n");
-
-        if (!browserClientId && reusableClientId) {
-          await completeOpenAICodexDeviceLogin({
-            clientId: deviceLoginClientId,
-            credentialsPath,
-            ...(baseUrl ? { baseUrl } : {}),
-            onDeviceCode: (info) => {
-              process.stdout.write(`Please visit ${info.verificationUri} and enter code: ${info.userCode}\n`);
-            },
-          });
-        } else {
-          await completeOpenAIDeviceLogin({
-            clientId: deviceLoginClientId,
-            scopes: ["openid", "profile", "offline_access", "model.request", "api.model.read"],
-            credentialsPath,
-            ...(baseUrl ? { baseUrl } : {}),
-            onDeviceCode: (info) => {
-              process.stdout.write(`Please visit ${info.verificationUri} and enter code: ${info.userCode}\n`);
-            },
-          });
-        }
-
-        process.stdout.write("Login successful.\n");
+      if (runtimeContext.shouldUseDevice) {
+        await runDeviceAuthLogin({ runtimeContext, credentialsPath });
         return;
       }
 
-      const browserPkceClientId = browserClientId!;
-      const pkce = createOpenAIPkcePair();
-      const baseUrl = process.env.OPENAI_OAUTH_BASE_URL?.trim();
-      const url = buildOpenAIAuthorizationUrl({
-        clientId: browserPkceClientId,
-        redirectUri,
-        state: pkce.state,
-        codeChallenge: pkce.codeChallenge,
-        scopes: ["openid", "profile", "offline_access", "model.request", "api.model.read"],
-        ...(baseUrl ? { baseUrl } : {}),
-      });
-
-      if (options.print) {
-        process.stdout.write(`${url.toString()}\n`);
-        return;
-      }
-
-      process.stdout.write(`${url.toString()}\n`);
-      process.stdout.write(`Waiting for OAuth callback on ${redirectUri}\n`);
-
-      const callbackUrl = await waitForBrowserOAuthCallback({ redirectUri });
-      await completeOpenAIBrowserLogin({
-        clientId: browserPkceClientId,
-        redirectUri,
-        callbackUrl,
-        expectedState: pkce.state,
-        codeVerifier: pkce.codeVerifier,
-        credentialsPath,
-        ...(baseUrl ? { baseUrl } : {}),
-      });
-      process.stdout.write("Login successful.\n");
+      await runBrowserAuthLogin({ runtimeContext, options, credentialsPath });
     });
 
   workCommand
@@ -337,84 +591,43 @@ export function createUncleCodeProgram(): Command {
     .option("--session-id <sessionId>")
     .option("--tools")
     .option("--help")
-    .action(async (promptParts: string[], options: { provider?: string; model?: string; reasoning?: string; cwd?: string; sessionId?: string; tools?: boolean; help?: boolean }, _command) => {
-      const forwardedArgs: string[] = [];
-      if (options.help) {
-        forwardedArgs.push("--help");
-      }
-      if (options.tools) {
-        forwardedArgs.push("--tools");
-      }
-      if (options.cwd) {
-        forwardedArgs.push("--cwd", options.cwd);
-      }
-      if (options.provider) {
-        forwardedArgs.push("--provider", options.provider);
-      }
-      if (options.model) {
-        forwardedArgs.push("--model", options.model);
-      }
-      if (options.reasoning) {
-        forwardedArgs.push("--reasoning", options.reasoning);
-      }
-      if (options.sessionId) {
-        forwardedArgs.push("--session-id", options.sessionId);
-      }
-      forwardedArgs.push(...promptParts);
-      await launchWorkEntrypoint(forwardedArgs);
+    .action(async (promptParts: string[], options: WorkCommandOptions, _command) => {
+      await handleWorkCommand(promptParts, options);
     });
 
   authCommand
     .command("status")
     .description("Show OpenAI auth source, org/project context, and expiry state")
     .action(async () => {
-      const status = await resolveOpenAIAuthStatus({ env: process.env });
-
-      process.stdout.write(`${formatOpenAIAuthStatus(status)}\n`);
+      await handleAuthStatusCommand();
     });
 
   authCommand
     .command("logout")
     .description("Clear locally stored UncleCode auth credentials")
     .action(async () => {
-      const credentialsPath =
-        process.env.UNCLECODE_OPENAI_CREDENTIALS_PATH?.trim() ||
-        path.join(os.homedir(), ".unclecode", "credentials", "openai.json");
-      await clearOpenAICredentials({ credentialsPath });
-      const status = await resolveOpenAIAuthStatus({ env: process.env });
-      for (const line of formatLogoutResult(status)) {
-        process.stdout.write(`${line}\n`);
-      }
+      await handleAuthLogoutCommand();
     });
 
   modeCommand
     .command("status")
     .description("Show the active mode and where it came from")
     .action(() => {
-      process.stdout.write(
-        `${formatModeStatusReport({ workspaceRoot: process.cwd(), env: process.env })}\n`,
-      );
+      handleModeStatusCommand();
     });
 
   modeCommand
     .command("set <mode>")
     .description("Persist the active mode in the project config")
     .action(async (mode: string) => {
-      if (!isModeProfileId(mode)) {
-        throw new Error(`Unsupported mode: ${mode}`);
-      }
-
-      const configPath = await persistProjectMode(process.cwd(), mode);
-      process.stdout.write(`${formatModeSetReport(mode, configPath)}\n`);
+      await handleModeSetCommand(mode);
     });
 
   program
     .command("setup")
     .description("Show actionable setup guidance for auth, runtime, and workspace readiness")
     .action(async () => {
-      process.stdout.write(
-        `${await buildSetupReport({ workspaceRoot: process.cwd(), env: process.env })}\n`,
-      );
+      await handleSetupCommand();
     });
 
   program
@@ -422,28 +635,15 @@ export function createUncleCodeProgram(): Command {
     .description("Report auth, runtime, session-store, and MCP readiness")
     .option("--verbose", "Print subsystem latency counters for support and debugging")
     .option("--json", "Print machine-readable doctor output with latency counters and thresholds")
-    .action(async (options: { verbose?: boolean; json?: boolean }) => {
-      if (options.json) {
-        const { report } = await buildDoctorReportData({
-          workspaceRoot: process.cwd(),
-          env: process.env,
-          verbose: true,
-        });
-        process.stdout.write(`${JSON.stringify(report)}\n`);
-        return;
-      }
-
-      process.stdout.write(
-        `${await buildDoctorReport({ workspaceRoot: process.cwd(), env: process.env, ...(options.verbose ? { verbose: true } : {}) })}\n`,
-      );
+    .action(async (options: DoctorCommandOptions) => {
+      await handleDoctorCommand(options);
     });
 
   program
     .command("sessions")
     .description("List resumable local sessions for this workspace")
     .action(async () => {
-      const items = await listSessions({ workspaceRoot: process.cwd(), env: process.env });
-      process.stdout.write(`${formatSessionsReport(items)}\n`);
+      await handleSessionsCommand();
     });
 
   program
@@ -451,78 +651,30 @@ export function createUncleCodeProgram(): Command {
     .description("Resume a stored local session snapshot")
     .option("--verbose", "Collect resume latency instrumentation")
     .option("--json", "Print machine-readable resume output with latency counters and thresholds")
-    .action(async (sessionId: string, options: { verbose?: boolean; json?: boolean }) => {
-      const { lines, report } = await buildResumeSummaryData({
-        workspaceRoot: process.cwd(),
-        env: process.env,
-        sessionId,
-      });
-
-      if (options.json) {
-        process.stdout.write(`${JSON.stringify(report)}\n`);
-        return;
-      }
-
-      if ((process.stdin.isTTY ?? false) && (process.stdout.isTTY ?? false)) {
-        await launchSessionCenter({
-          workspaceRoot: process.cwd(),
-          env: process.env,
-          initialSelectedSessionId: sessionId,
-          contextLines: lines,
-        });
-        return;
-      }
-
-      process.stdout.write(`${lines.join("\n")}\n`);
+    .action(async (sessionId: string, options: ResumeCommandOptions) => {
+      await handleResumeCommand(sessionId, options);
     });
 
   researchCommand
     .command("status")
     .description("Show the current research-mode status")
     .action(async () => {
-      const userHomeDir = process.env.HOME;
-      process.stdout.write(
-        `${await buildResearchStatusReport({
-          workspaceRoot: process.cwd(),
-          env: process.env,
-          ...(userHomeDir ? { userHomeDir } : {}),
-        })}\n`,
-      );
+      await handleResearchStatusCommand();
     });
 
   researchCommand
     .command("run <prompt...>")
     .description("Run a linear local research pass and write an artifact")
     .option("--json", "Print machine-readable research output with latency counters and thresholds")
-    .action(async (promptParts: string[], options: { json?: boolean }) => {
-      const userHomeDir = process.env.HOME;
-      const { lines, report } = await runResearchPassData({
-        workspaceRoot: process.cwd(),
-        env: process.env,
-        prompt: promptParts.join(" "),
-        ...(userHomeDir ? { userHomeDir } : {}),
-      });
-
-      if (options.json) {
-        process.stdout.write(`${JSON.stringify(report)}\n`);
-        return;
-      }
-
-      process.stdout.write(`${lines.join("\n")}\n`);
+    .action(async (promptParts: string[], options: ResearchRunCommandOptions) => {
+      await handleResearchRunCommand(promptParts, options);
     });
 
   mcpCommand
     .command("list")
     .description("List merged MCP servers from user and project config")
     .action(() => {
-      const userHomeDir = process.env.HOME;
-
-      process.stdout.write(
-        `${buildMcpListReport({
-          workspaceRoot: process.cwd(),
-          ...(userHomeDir ? { userHomeDir } : {}),
-        })}\n`,
-      );
+      handleMcpListCommand();
     });
 
   return program;
