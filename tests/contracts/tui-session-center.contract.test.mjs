@@ -168,8 +168,9 @@ test("buildActivityInspectorModel prioritizes current approval/worker/result ove
   });
 
   assert.deepEqual(model.currentLines, [
+    "Workflow: waiting approval · Open Browser Login",
     "Approval: Open Browser Login",
-    "Worker: browser-login · waiting for callback",
+    "Worker: browser-login · Waiting for callback",
     "Result: OAuth login complete.",
   ]);
   assert.equal(model.traceLines.length, 2);

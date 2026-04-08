@@ -61,7 +61,7 @@ export function getWorkShellEntryBorderStyle(role: WorkShellEntryRole): "round" 
 }
 
 export function getWorkShellEmptyConversationHint(): string {
-  return "Start typing. /auth shows sign-in routes.";
+  return "Start with a task, or use /auth, /review, /context, or @file.";
 }
 
 export function getWorkShellPanelBorderColor(inputValue: string, panelTitle: string): string {
@@ -159,10 +159,13 @@ export function getWorkShellAttachmentLineColor(index: number): string {
 }
 
 export function getWorkShellComposerHint(inputValue: string, slashSuggestionCount: number): string | undefined {
-  if (!inputValue.trim().startsWith("/")) {
-    return undefined;
+  if (inputValue.trim().startsWith("/")) {
+    return slashSuggestionCount > 0 ? "↑↓ · Tab · Enter" : "No slash yet.";
   }
-  return slashSuggestionCount > 0 ? "↑↓ · Tab · Enter" : "No slash yet.";
+  if (inputValue.trim().length === 0) {
+    return "Enter send · / commands · @file context";
+  }
+  return "Enter send · / commands";
 }
 
 function compactWorkShellReasoningLabel(reasoningLabel: string): string {
@@ -388,7 +391,7 @@ export function WorkShellView(props: {
     <Box flexDirection="column" paddingX={1}>
       <Box justifyContent="space-between">
         <Text bold>{formatWorkShellProviderTitle(props.provider)}</Text>
-        <Text color="gray">{props.headerHint ?? "Esc · /auth · /context"}</Text>
+        <Text color="gray">{props.headerHint ?? "Esc overlay · /auth sign-in · /review changes · /context"}</Text>
       </Box>
       <Box marginTop={1} borderStyle="round" borderColor="gray" paddingX={1}>
         <Text>

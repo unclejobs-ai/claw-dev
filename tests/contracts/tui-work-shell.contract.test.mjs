@@ -94,14 +94,21 @@ test("getWorkShellEntryPresentation keeps user, assistant, tool, and system role
   assert.equal(getWorkShellEntryBorderStyle("system"), "single");
   assert.equal(
     getWorkShellEmptyConversationHint(),
-    "Start typing. /auth shows sign-in routes.",
+    "Start with a task, or use /auth, /review, /context, or @file.",
   );
 });
 
 test("getWorkShellComposerHint keeps slash discovery guidance inside the shared work presenter seam", () => {
   assert.equal(getWorkShellComposerHint("/auth", 2), "↑↓ · Tab · Enter");
   assert.equal(getWorkShellComposerHint("/unknown", 0), "No slash yet.");
-  assert.equal(getWorkShellComposerHint("plain text", 3), undefined);
+  assert.equal(
+    getWorkShellComposerHint("", 0),
+    "Enter send · / commands · @file context",
+  );
+  assert.equal(
+    getWorkShellComposerHint("plain text", 3),
+    "Enter send · / commands",
+  );
   assert.equal(getWorkShellComposerHintMinHeight(), 1);
 });
 

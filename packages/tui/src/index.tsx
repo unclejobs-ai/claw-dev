@@ -731,6 +731,7 @@ function StatusBar(props: {
   readonly authLabel: string;
   readonly approvalCount: number;
   readonly workerCount: number;
+  readonly workflowStatus: string;
 }) {
   const sep = <Text color={C.textMuted}> {B.v} </Text>;
   return (
@@ -743,7 +744,7 @@ function StatusBar(props: {
       {sep}
       <Text color={props.workerCount > 0 ? C.success : C.textMuted}>workers {props.workerCount}</Text>
       {sep}
-      <Text color={C.textMuted}>↑↓ move · Tab switch · Enter run</Text>
+      <Text color={props.approvalCount > 0 ? C.warning : props.workerCount > 0 ? C.success : C.textMuted}>{props.workflowStatus}</Text>
     </Box>
   );
 }
@@ -805,6 +806,60 @@ function SessionList(props: {
   );
 }
 
+function stripSessionCenterShortcutLabel(label: string): string {
+  return label.replace(/^[A-Z]\s+/, "").trim();
+}
+
+function prettifyWorkerDetail(detail: string): string {
+  const trimmed = detail.trim();
+  if (trimmed.length === 0) {
+    return "working";
+  }
+  const normalized = trimmed
+    .replace(/^oauth\b/i, "OAuth")
+    .replace(/^mcp\b/i, "MCP")
+    .replace(/^api key\b/i, "API key");
+  return normalized[0]?.toUpperCase() === normalized[0]
+    ? normalized
+    : `${normalized[0]?.toUpperCase() ?? ""}${normalized.slice(1)}`;
+}
+
+function formatWorkerDisplayLabel(worker: TuiWorkerStatus): string {
+  return stripSessionCenterShortcutLabel(worker.label)
+    .replace(/^browser$/i, "Browser login")
+    .replace(/^key$/i, "API key login")
+    .replace(/^logout$/i, "Sign out")
+    .replace(/^research$/i, "Research")
+    .replace(/^doctor$/i, "Doctor")
+    .replace(/^resume$/i, "Resume session");
+}
+
+function formatWorkerStatusSummary(worker: TuiWorkerStatus): string {
+  return `${formatWorkerDisplayLabel(worker)} · ${prettifyWorkerDetail(worker.detail)}`;
+}
+
+function buildWorkflowStatusSummary(input: {
+  readonly approvals: readonly TuiApprovalRequest[];
+  readonly workers: readonly TuiWorkerStatus[];
+  readonly outputLines: readonly string[];
+  readonly isRunning?: boolean;
+}): string {
+  if (input.approvals[0]) {
+    return `waiting approval · ${input.approvals[0].title}`;
+  }
+  const runningWorker = input.workers.find((worker) => worker.status === "running") ?? input.workers[0];
+  if (runningWorker) {
+    return `running · ${formatWorkerStatusSummary(runningWorker)}`;
+  }
+  if (input.isRunning) {
+    return "running · preparing next step";
+  }
+  if (input.outputLines[0]) {
+    return "ready · last result available";
+  }
+  return "ready · W work · B auth · R research";
+}
+
 function ActionList(props: {
   readonly actions: readonly SessionCenterAction[];
   readonly selectedIndex: number;
@@ -818,7 +873,7 @@ function ActionList(props: {
         return (
           <Box key={action.id}>
             {prefix}
-            <Text color={isSelected ? C.accentBright : C.textSecondary} bold={isSelected}>{truncateForPane(action.label, 18)}</Text>
+            <Text color={isSelected ? C.accentBright : C.textSecondary} bold={isSelected}>{truncateForPane(stripSessionCenterShortcutLabel(action.label), 18)}</Text>
           </Box>
         );
       })}
@@ -832,14 +887,16 @@ export function buildActivityInspectorModel(input: {
   readonly outputLines: readonly string[];
   readonly traceEntries: readonly TuiShellStepTraceEntry[];
   readonly activityEntries: readonly TuiShellActivityEntry[];
+  readonly isRunning?: boolean;
 }): {
   readonly currentLines: readonly string[];
   readonly traceLines: readonly { message: string; timestamp: string; color: string }[];
   readonly historyLines: readonly string[];
 } {
   const currentLines = [
+    `Workflow: ${buildWorkflowStatusSummary(input)}`,
     ...(input.approvals[0] ? [`Approval: ${input.approvals[0].title}`] : []),
-    ...(input.workers[0] ? [`Worker: ${input.workers[0].label} · ${input.workers[0].detail}`] : []),
+    ...input.workers.slice(0, 2).map((worker) => `Worker: ${formatWorkerStatusSummary(worker)}`),
     ...(input.outputLines[0] ? [`Result: ${input.outputLines[0]}`] : []),
   ];
 
@@ -927,19 +984,21 @@ function DetailPanel(props: {
       outputLines: props.shellState.outputLines,
       traceEntries: props.shellState.traceEntries,
       activityEntries: props.shellState.activityEntries,
+      isRunning: props.shellState.isRunning,
     });
 
     return (
       <Box flexDirection="column">
         <Text color={C.textMuted}>Current state for this shell session.</Text>
-        <Box marginTop={1}><Text bold color={C.text}>Now</Text></Box>
-        {activityModel.currentLines.length === 0 ? (
-          <Text color={C.textMuted}>Nothing active right now.</Text>
-        ) : (
-          activityModel.currentLines.map((line, index) => (
-            <Text key={`${String(index)}-${line}`} color={C.text}>{truncateForPane(line, 40)}</Text>
-          ))
-        )}
+        <Box marginTop={1}><Text bold color={C.text}>Workflow</Text></Box>
+        {activityModel.currentLines.map((line, index) => (
+          <Text
+            key={`${String(index)}-${line}`}
+            color={line.startsWith("Workflow:") ? C.info : line.startsWith("Approval:") ? C.warning : line.startsWith("Worker:") ? C.success : C.text}
+          >
+            {truncateForPane(line, 40)}
+          </Text>
+        ))}
         <Box marginTop={1}><Text bold color={C.text}>Live steps</Text></Box>
         {activityModel.traceLines.length === 0 ? (
           <Text color={C.textMuted}>No trace yet.</Text>
@@ -959,6 +1018,7 @@ function DetailPanel(props: {
             <Text key={`${String(index)}-${line}`} color={C.textMuted}>{truncateForPane(line, 40)}</Text>
           ))
         )}
+        <Box marginTop={1}><Text color={C.textMuted}>Next · W work · B auth · K key · R research · D doctor</Text></Box>
       </Box>
     );
   }
@@ -1577,6 +1637,12 @@ export function Dashboard(props: DashboardProps) {
     ? shellState.approvals.find((approval) => approval.id === createApprovalRequestForAction(selectedAction.id)?.id)
     : undefined;
   const activeWorkerCount = shellState.workers.filter((worker) => worker.status === "running").length;
+  const workflowStatus = buildWorkflowStatusSummary({
+    approvals: shellState.approvals,
+    workers: shellState.workers,
+    outputLines: shellState.outputLines,
+    isRunning: shellState.isRunning,
+  });
   const syncHomeState = useCallback((homeState: Partial<TuiShellHomeState>) => {
     dispatch({ type: "home.updated", homeState });
   }, []);
@@ -1597,11 +1663,11 @@ export function Dashboard(props: DashboardProps) {
 
     void (async () => {
       dispatch({ type: "action.started", actionId: action.id });
-      dispatch({ type: "worker.progressed", worker: { id: action.id, label: action.label, status: "running", detail } });
+      dispatch({ type: "worker.progressed", worker: { id: action.id, label: action.label, status: "running", detail: prettifyWorkerDetail(detail) } });
       try {
         const lines = await runAction({
           actionId: action.id,
-          onProgress: (line) => dispatch({ type: "worker.progressed", worker: { id: action.id, label: action.label, status: "running", detail: line } }),
+          onProgress: (line) => dispatch({ type: "worker.progressed", worker: { id: action.id, label: action.label, status: "running", detail: prettifyWorkerDetail(line) } }),
         });
         const refreshedHomeState = props.refreshHomeState ? await props.refreshHomeState() : shellState.homeState;
         dispatch({
@@ -1732,13 +1798,13 @@ export function Dashboard(props: DashboardProps) {
         dispatch({ type: "approval.resolved", approvalId: selectedApproval.id });
         void (async () => {
           dispatch({ type: "action.started", actionId: selectedAction.id });
-          dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: "Preparing browser auth…" } });
+          dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: prettifyWorkerDetail("Preparing browser auth…") } });
           try {
             const lines = await runAction({
               actionId: selectedAction.id,
-              onProgress: (line) => dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: line } }),
+              onProgress: (line) => dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: prettifyWorkerDetail(line) } }),
             });
-            dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: "Finalizing output…" } });
+            dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: prettifyWorkerDetail("Finalizing output…") } });
             const refreshedHomeState = props.refreshHomeState ? await props.refreshHomeState() : shellState.homeState;
             dispatch({
               type: "action.completed",
@@ -1771,14 +1837,14 @@ export function Dashboard(props: DashboardProps) {
       if (draftResult.submitted && runAction) {
         void (async () => {
           dispatch({ type: "action.started", actionId: selectedAction.id });
-          dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: selectedAction.id === "new-research" ? "assembling context" : "saving auth" } });
+          dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: prettifyWorkerDetail(selectedAction.id === "new-research" ? "assembling context" : "saving auth") } });
           try {
             const lines = await runAction({
               actionId: selectedAction.id,
               prompt: draftResult.value,
-              onProgress: (line) => dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: line } }),
+              onProgress: (line) => dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: prettifyWorkerDetail(line) } }),
             });
-            dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: selectedAction.id === "new-research" ? "writing artifact" : "refreshing auth" } });
+            dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: prettifyWorkerDetail(selectedAction.id === "new-research" ? "writing artifact" : "refreshing auth") } });
             const refreshedHomeState = props.refreshHomeState ? await props.refreshHomeState() : shellState.homeState;
             dispatch({
               type: "action.completed",
@@ -1835,13 +1901,13 @@ export function Dashboard(props: DashboardProps) {
         }
         void (async () => {
           dispatch({ type: "action.started", actionId: selectedAction.id });
-          dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: "loading action output" } });
+          dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: prettifyWorkerDetail("loading action output") } });
           try {
             const lines = await runAction({
               actionId: selectedAction.id,
-              onProgress: (line) => dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: line } }),
+              onProgress: (line) => dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: prettifyWorkerDetail(line) } }),
             });
-            dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: "finalizing output" } });
+            dispatch({ type: "worker.progressed", worker: { id: selectedAction.id, label: selectedAction.label, status: "running", detail: prettifyWorkerDetail("finalizing output") } });
             const refreshedHomeState = props.refreshHomeState ? await props.refreshHomeState() : shellState.homeState;
             dispatch({
               type: "action.completed",
@@ -1870,7 +1936,7 @@ export function Dashboard(props: DashboardProps) {
         if (runSession) {
           void (async () => {
             dispatch({ type: "action.started", actionId: selectedSession.sessionId });
-            dispatch({ type: "worker.progressed", worker: { id: selectedSession.sessionId, label: "resume", status: "running", detail: "loading session context" } });
+            dispatch({ type: "worker.progressed", worker: { id: selectedSession.sessionId, label: "resume", status: "running", detail: prettifyWorkerDetail("loading session context") } });
             try {
               const lines = await runSession(selectedSession.sessionId);
               const refreshedHomeState = props.refreshHomeState ? await props.refreshHomeState() : shellState.homeState;
@@ -1916,7 +1982,7 @@ export function Dashboard(props: DashboardProps) {
       <Box marginY={1}><ThinDivider /></Box>
       <ViewTabs activeView={shellState.view} />
       <Box marginTop={1}>
-        <Text color={C.textSecondary}>1-4 tabs · W/B/K/L/R/D run · arrows move · Tab switch</Text>
+        <Text color={C.textSecondary}>{workflowStatus}</Text>
       </Box>
       <Box marginY={1}><ThinDivider /></Box>
 
@@ -1958,7 +2024,7 @@ export function Dashboard(props: DashboardProps) {
       }
 
       <Box marginY={1}><ThinDivider /></Box>
-      <StatusBar runtime={runtime} modeLabel={model.modeLabel} authLabel={model.authLabel} approvalCount={shellState.approvals.length} workerCount={activeWorkerCount} />
+      <StatusBar runtime={runtime} modeLabel={model.modeLabel} authLabel={model.authLabel} approvalCount={shellState.approvals.length} workerCount={activeWorkerCount} workflowStatus={workflowStatus} />
     </Box>
   );
 }
