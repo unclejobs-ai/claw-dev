@@ -80,8 +80,8 @@ Record the remaining runtime boundaries after the TUI/orchestration redesign mig
 - The remaining work-entry and embedded-pane bridge helpers now live in `apps/unclecode-cli/src/work-bootstrap.ts`, so `interactive-shell.ts` no longer owns cwd injection, packaged work-entry resolution, loader fallback, or embedded-pane controller assembly inline.
 - Public app startup now consumes `work-bootstrap.ts` directly: `index.ts`, `program.ts`, and repo-internal work-forwarding coverage no longer route work-launch helper ownership through `interactive-shell.ts`.
 - `interactive-shell.ts` no longer owns interactive-surface input normalization inline; `apps/unclecode-cli/src/interactive-launch-inputs.ts` now owns shared bootstrap dependency typing plus `createWorkLaunchInput(...)` / `createSessionCenterLaunchInput(...)`.
-- `launchSessionCenter(...)` ownership now lives in `apps/unclecode-cli/src/session-center-launcher.ts`, leaving `interactive-shell.ts` as a thinner interactive-surface router instead of a mixed router+session-center launch file.
-- Guardian narrowing now treats `session-center-launcher.ts`, `interactive-launch-inputs.ts`, and `work-bootstrap.ts` as the same app shell/bootstrap impact class that `interactive-shell.ts` previously represented, so command + contract subsets stay honest after the bootstrap split.
+- `launchSessionCenter(...)` ownership now lives in `apps/unclecode-cli/src/session-center-launcher.ts`, and the obsolete `apps/unclecode-cli/src/interactive-shell.ts` router shim has now been deleted entirely because runtime ownership had already moved to dedicated owner seams.
+- Guardian narrowing now treats `session-center-launcher.ts`, `interactive-launch-inputs.ts`, and `work-bootstrap.ts` as the app shell/bootstrap impact class that used to be represented by `interactive-shell.ts`, so command + contract subsets stay honest after the router shim deletion.
 - Work-entry consumers now share `resolveWorkModuleLoader(...)`, so both `launchWorkEntrypoint(...)` and `loadEmbeddedWorkPane(...)` reuse one fallback path instead of repeating local `loadWorkEntrypointModule()` lambdas.
 - Guardian contract-aware narrowing now covers not only shell/bootstrap files but also public package barrel/index seams that materially affect owner-boundary contracts.
 - Guardian impact inference now treats the shared embedded-work TUI contract file (`packages/contracts/src/tui.ts`) as both a contracts surface and a TUI surface, so bounded executable review stays narrow but stops under-testing controller-shape changes.
@@ -198,6 +198,7 @@ Record the remaining runtime boundaries after the TUI/orchestration redesign mig
   - re-verified after cutting public work-launch ownership over to `apps/unclecode-cli/src/work-bootstrap.ts`
   - re-verified after moving interactive-surface input normalization into `apps/unclecode-cli/src/interactive-launch-inputs.ts`
   - re-verified after moving session-center launch orchestration into `apps/unclecode-cli/src/session-center-launcher.ts`
+  - re-verified after deleting the obsolete `apps/unclecode-cli/src/interactive-shell.ts` router shim
   - re-verified after extending guardian narrowing to the new app bootstrap seams
   - re-verified after extracting shared work-module fallback resolution into `resolveWorkModuleLoader(...)`
 - `node --conditions=source --import tsx --test tests/work/guardian-checks.test.mjs`

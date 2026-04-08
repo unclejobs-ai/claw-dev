@@ -1224,9 +1224,9 @@
 - Modify: `tests/work/guardian-checks.test.mjs`
 - Modify: `.sisyphus/evidence/*`
 
-- [ ] Step 1: Add failing contract coverage that flips `interactive-shell.ts` from a thin-router expectation to a file-absence expectation, while preserving owner-seam assertions on the surviving bootstrap modules.
-- [ ] Step 2: Delete `interactive-shell.ts` and remove any residual guardian/bootstrap references that still treat it as a live app seam.
-- [ ] Step 3: Re-run targeted contract/guardian coverage before full verification.
+- [x] Step 1: Add failing contract coverage that flips `interactive-shell.ts` from a thin-router expectation to a file-absence expectation, while preserving owner-seam assertions on the surviving bootstrap modules.
+- [x] Step 2: Delete `interactive-shell.ts` and remove any residual guardian/bootstrap references that still treat it as a live app seam.
+- [x] Step 3: Re-run targeted contract/guardian coverage before full verification.
 
 ## Verification
 

@@ -313,13 +313,13 @@ function resolveTargetedTestScriptsForFile(file: string): readonly string[] {
   if (/(^|\/)(tests\/tui|packages\/tui\/)/.test(file)) {
     scripts.push("test:tui");
   }
-  if (/(^|\/)(tests\/commands|apps\/unclecode-cli\/src\/(command-router|program|interactive-shell|interactive-launch-inputs|session-center-launcher|work-bootstrap|fast-cli|fast-sessions|startup-paths|operational)\.ts)/.test(file)) {
+  if (/(^|\/)(tests\/commands|apps\/unclecode-cli\/src\/(command-router|program|interactive-launch-inputs|session-center-launcher|work-bootstrap|fast-cli|fast-sessions|startup-paths|operational)\.ts)/.test(file)) {
     scripts.push("test:commands");
   }
   if (/(^|\/)(tests\/work|apps\/unclecode-cli\/src\/(work-runtime|guardian-checks|runtime-coding-agent)\.ts|src\/)/.test(file)) {
     scripts.push("test:work");
   }
-  if (/(^|\/)(packages\/tui\/|packages\/orchestrator\/src\/index\.ts|packages\/context-broker\/src\/index\.ts|packages\/providers\/src\/index\.ts|packages\/session-store\/src\/index\.ts|apps\/unclecode-cli\/src\/(interactive-shell|interactive-launch-inputs|session-center-launcher|work-bootstrap|work-entry|work-runtime)\.ts|bin\/unclecode\.cjs|tsconfig\.work\.json)/.test(file)) {
+  if (/(^|\/)(packages\/tui\/|packages\/orchestrator\/src\/index\.ts|packages\/context-broker\/src\/index\.ts|packages\/providers\/src\/index\.ts|packages\/session-store\/src\/index\.ts|apps\/unclecode-cli\/src\/(interactive-launch-inputs|session-center-launcher|work-bootstrap|work-entry|work-runtime)\.ts|bin\/unclecode\.cjs|tsconfig\.work\.json)/.test(file)) {
     scripts.push("test:contracts");
   }
 
