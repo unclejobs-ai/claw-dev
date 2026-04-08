@@ -22,16 +22,20 @@ function normalizeCredential(value: string | undefined): string {
   return trimmed;
 }
 
-function defaultFallbackAuthPath(): string {
-  return path.join(homedir(), ".unclecode", "credentials", "openai.json");
+function resolveHomeDir(env?: NodeJS.ProcessEnv): string {
+  return env?.HOME?.trim() || homedir();
 }
 
-function defaultCodexAuthPath(): string {
-  return path.join(homedir(), ".codex", "auth.json");
+function defaultFallbackAuthPath(env?: NodeJS.ProcessEnv): string {
+  return path.join(resolveHomeDir(env), ".unclecode", "credentials", "openai.json");
 }
 
-function defaultFallbackAuthPaths(): readonly string[] {
-  return [defaultFallbackAuthPath(), defaultCodexAuthPath()];
+function defaultCodexAuthPath(env?: NodeJS.ProcessEnv): string {
+  return path.join(resolveHomeDir(env), ".codex", "auth.json");
+}
+
+function defaultFallbackAuthPaths(env?: NodeJS.ProcessEnv): readonly string[] {
+  return [defaultFallbackAuthPath(env), defaultCodexAuthPath(env)];
 }
 
 function parseJwtPayload(token: string): Record<string, unknown> | null {
@@ -133,9 +137,9 @@ export async function resolveOpenAIAuth(
       ? [...input.fallbackAuthPaths]
       : input.fallbackAuthPath
         ? [input.fallbackAuthPath]
-        : [...defaultFallbackAuthPaths()];
+        : [...defaultFallbackAuthPaths(env)];
   const readFallbackFile =
-    input.readFallbackFile ?? ((authPath?: string) => readFile(authPath ?? defaultFallbackAuthPath(), "utf8"));
+    input.readFallbackFile ?? ((authPath?: string) => readFile(authPath ?? defaultFallbackAuthPath(env), "utf8"));
 
   let bestFailure: ResolvedOpenAIAuth | undefined;
 
@@ -193,7 +197,7 @@ export async function resolveOpenAIAuth(
         continue;
       }
 
-      if (!hasRequiredModelRequestScope(accessToken)) {
+      if (!hasRequiredModelRequestScope(accessToken) && source !== "codex-auth-file") {
         rememberFailure({
           status: "missing",
           authType: "oauth",
@@ -210,6 +214,7 @@ export async function resolveOpenAIAuth(
         bearerToken: accessToken,
         organizationId: normalizeCredential(parsed?.organizationId) || null,
         projectId: normalizeCredential(parsed?.projectId) || null,
+        accountId: normalizeCredential(parsed?.accountId) || normalizeCredential(parsed?.tokens?.account_id) || null,
       };
     } catch {
       rememberFailure({

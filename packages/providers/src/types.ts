@@ -41,6 +41,7 @@ export type ResolvedOpenAIAuth =
       readonly bearerToken: string;
       readonly organizationId?: string | null;
       readonly projectId?: string | null;
+      readonly accountId?: string | null;
     }
   | {
       readonly status: "expired";

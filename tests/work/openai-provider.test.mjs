@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -104,6 +104,76 @@ test("loadConfig can reuse openai auth file when api key env is missing", async 
   }
 });
 
+test("loadConfig ignores placeholder OPENAI_API_KEY values and reuses oauth auth", async () => {
+  const originalEnv = { ...process.env };
+
+  try {
+    process.env.LLM_PROVIDER = "openai";
+    process.env.OPENAI_API_KEY = "your_openai_api_key_here";
+    process.env.OPENAI_MODEL = "gpt-4.1-mini";
+
+    const config = await loadConfig({
+      readOpenAiAuthFile: async () =>
+        JSON.stringify({
+          accessToken: "oauth-access-token",
+          refreshToken: "oauth-refresh-token",
+        }),
+    });
+
+    assert.equal(config.provider, "openai");
+    assert.equal(config.apiKey, "oauth-access-token");
+    assert.equal(config.authLabel, "oauth-file");
+  } finally {
+    process.env = originalEnv;
+  }
+});
+
+test("loadConfig can reuse codex auth file without model.request scope", async () => {
+  const originalEnv = { ...process.env };
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), "unclecode-work-config-codex-"));
+  const fakeHome = path.join(workspaceRoot, "home");
+  const futureExp = Math.floor(Date.now() / 1000) + 3600;
+  const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ exp: futureExp, scp: ["openid", "profile", "offline_access", "api.connectors.read"] })).toString("base64url");
+  const token = `${header}.${payload}.sig`;
+
+  try {
+    mkdirSync(path.join(fakeHome, ".codex"), { recursive: true });
+    writeFileSync(
+      path.join(fakeHome, ".codex", "auth.json"),
+      JSON.stringify({
+        auth_mode: "chatgpt",
+        tokens: {
+          access_token: token,
+          account_id: "acct_123",
+        },
+      }),
+      "utf8",
+    );
+
+    process.env = {
+      ...originalEnv,
+      LLM_PROVIDER: "openai",
+      OPENAI_MODEL: "gpt-5.4",
+      HOME: fakeHome,
+    };
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.OPENAI_AUTH_TOKEN;
+    delete process.env.UNCLECODE_OPENAI_CREDENTIALS_PATH;
+
+    const config = await loadConfig({ cwd: workspaceRoot });
+
+    assert.equal(config.provider, "openai");
+    assert.equal(config.authLabel, "oauth-file");
+    assert.equal(config.openAIRuntime, "codex");
+    assert.equal(config.openAIAccountId, "acct_123");
+    assert.equal(config.apiKey, token);
+  } finally {
+    process.env = originalEnv;
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test("loadConfig points users to UncleCode auth flow when oauth file needs refresh", async () => {
   const originalEnv = { ...process.env };
 
@@ -134,20 +204,27 @@ test("loadConfig can degrade into shell-safe openai config when oauth lacks requ
   const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
   const payload = Buffer.from(JSON.stringify({ exp: futureExp, scp: ["openid", "profile", "offline_access"] })).toString("base64url");
   const token = `${header}.${payload}.sig`;
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), "unclecode-work-config-problematic-"));
+  const credentialsPath = path.join(workspaceRoot, "openai.json");
 
   try {
+    writeFileSync(
+      credentialsPath,
+      JSON.stringify({
+        authType: "oauth",
+        accessToken: token,
+        refreshToken: "rt_123",
+      }),
+      "utf8",
+    );
+
     process.env.LLM_PROVIDER = "openai";
     delete process.env.OPENAI_API_KEY;
     process.env.OPENAI_MODEL = "gpt-5.4";
+    process.env.UNCLECODE_OPENAI_CREDENTIALS_PATH = credentialsPath;
 
     const config = await loadConfig({
       allowProblematicOpenAIAuth: true,
-      readOpenAiAuthFile: async () =>
-        JSON.stringify({
-          authType: "oauth",
-          accessToken: token,
-          refreshToken: "rt_123",
-        }),
     });
 
     assert.equal(config.provider, "openai");
@@ -156,6 +233,7 @@ test("loadConfig can degrade into shell-safe openai config when oauth lacks requ
     assert.match(config.authIssueMessage ?? "", /model\.request scope/i);
   } finally {
     process.env = originalEnv;
+    rmSync(workspaceRoot, { recursive: true, force: true });
   }
 });
 
@@ -212,6 +290,52 @@ test("OpenAIProvider includes supported reasoning effort in request payloads", a
 
   await provider.runTurn("think hard");
   assert.deepEqual(capturedBody.reasoning, { effort: "high" });
+});
+
+test("OpenAIProvider uses the Codex backend for codex oauth runtime", async () => {
+  let capturedUrl;
+  let capturedHeaders;
+  let capturedBody;
+  const provider = new OpenAIProvider({
+    apiKey: "header.eyJzY3AiOlsib3BlbmlkIl19.sig",
+    model: "gpt-5.4",
+    cwd: process.cwd(),
+    runtime: "codex",
+    openAIAccountId: "acct_123",
+    reasoning: {
+      effort: "high",
+      source: "override",
+      support: { status: "supported", defaultEffort: "medium", supportedEfforts: ["low", "medium", "high"] },
+    },
+    fetchImpl: async (url, init) => {
+      capturedUrl = String(url);
+      capturedHeaders = init?.headers;
+      capturedBody = JSON.parse(String(init?.body ?? "{}"));
+      return {
+        ok: true,
+        async text() {
+          return [
+            'data: {"type":"response.output_text.delta","item_id":"msg_1","delta":"OK"}',
+            '',
+            'data: {"type":"response.output_item.done","item":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"OK"}]}}',
+            '',
+            'data: {"type":"response.completed","response":{"id":"resp_1"}}',
+            '',
+          ].join("\n");
+        },
+      };
+    },
+  });
+
+  const result = await provider.runTurn("say ok");
+
+  assert.equal(result.text, "OK");
+  assert.equal(capturedUrl, "https://chatgpt.com/backend-api/codex/responses");
+  assert.equal(capturedBody.store, false);
+  assert.equal(capturedBody.stream, true);
+  assert.equal(capturedBody.reasoning.effort, "none");
+  assert.equal(capturedBody.instructions.includes("MyClaudeCode"), true);
+  assert.equal(capturedHeaders["ChatGPT-Account-Id"], "acct_123");
 });
 
 test("OpenAIProvider sends pasted image attachments as multimodal user content", async () => {

@@ -20,10 +20,18 @@ test("loadWorkShellDashboardProps keeps browser oauth unavailable when only reus
 
   try {
     mkdirSync(path.join(fakeHome, ".codex"), { recursive: true });
+    const futureExp = Math.floor(Date.now() / 1000) + 3600;
+    const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
+    const accessPayload = Buffer.from(JSON.stringify({ exp: futureExp, scp: ["openid", "profile", "offline_access", "api.connectors.read"] })).toString("base64url");
     const idPayload = Buffer.from(JSON.stringify({ aud: ["client-derived-789"] })).toString("base64url");
     writeFileSync(
       path.join(fakeHome, ".codex", "auth.json"),
-      JSON.stringify({ tokens: { id_token: `header.${idPayload}.sig` } }),
+      JSON.stringify({
+        tokens: {
+          access_token: `${header}.${accessPayload}.sig`,
+          id_token: `header.${idPayload}.sig`,
+        },
+      }),
       "utf8",
     );
 
@@ -41,6 +49,7 @@ test("loadWorkShellDashboardProps keeps browser oauth unavailable when only reus
     const element = props.renderWorkPane({ openSessions() {}, syncHomeState() {} });
     const pane = element.props.buildPane({ onExit() {} });
 
+    assert.equal(props.authLabel, "oauth-file");
     assert.equal(pane.browserOAuthAvailable, false);
   } finally {
     process.env = originalEnv;

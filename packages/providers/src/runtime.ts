@@ -5,6 +5,7 @@ import type {
   ToolResultBlockParam,
 } from "@anthropic-ai/sdk/resources/messages";
 import { FunctionCallingConfigMode, GoogleGenAI } from "@google/genai";
+import { randomUUID } from "node:crypto";
 
 import type { ReasoningSupport } from "./types.js";
 
@@ -83,6 +84,8 @@ export type CreateRuntimeProviderArgs = {
   systemPrompt?: string;
   toolRuntime?: ToolRuntime;
   providerOverride?: LlmProvider;
+  openAIRuntime?: "api" | "codex";
+  openAIAccountId?: string | null;
 };
 
 const SYSTEM_PROMPT = `
@@ -124,6 +127,8 @@ export class OpenAIProvider implements LlmProvider {
   private reasoning: RuntimeReasoningConfig;
   private traceListener: ProviderTraceListener | undefined;
   private readonly messages: OpenAIMessage[];
+  private readonly runtime: "api" | "codex";
+  private readonly openAIAccountId: string | null;
 
   constructor(args: {
     apiKey: string;
@@ -134,6 +139,8 @@ export class OpenAIProvider implements LlmProvider {
     fetchImpl?: OpenAIFetch;
     traceListener?: ProviderTraceListener;
     systemPrompt?: string;
+    runtime?: "api" | "codex";
+    openAIAccountId?: string | null;
   }) {
     this.apiKey = args.apiKey;
     this.model = args.model;
@@ -146,6 +153,8 @@ export class OpenAIProvider implements LlmProvider {
     this.fetchImpl = args.fetchImpl ?? fetch;
     this.traceListener = args.traceListener;
     this.messages = [{ role: "system", content: this.systemPrompt }];
+    this.runtime = args.runtime ?? "api";
+    this.openAIAccountId = args.openAIAccountId ?? null;
   }
 
   updateRuntimeSettings(settings: {
@@ -175,6 +184,149 @@ export class OpenAIProvider implements LlmProvider {
     this.apiKey = apiKey.trim();
   }
 
+  private async requestOpenApiMessage(): Promise<{
+    content?: string | null;
+    tool_calls?: Array<{
+      id?: string;
+      function?: { name?: string; arguments?: string };
+    }>;
+  }> {
+    const response = await this.fetchImpl(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: this.model,
+          messages: this.messages,
+          tools: this.toolRuntime.definitions.map((tool) => ({
+            type: "function",
+            function: {
+              name: tool.name,
+              description: tool.description,
+              parameters: tool.input_schema,
+            },
+          })),
+          tool_choice: "auto",
+          ...(this.reasoning.support.status === "supported"
+            && this.reasoning.effort !== "unsupported"
+            ? { reasoning: { effort: this.reasoning.effort } }
+            : {}),
+        }),
+      },
+    );
+
+    if (!response.ok) {
+      const responseText = await response.text().catch(() => "");
+      throw new Error(
+        responseText.trim().length > 0
+          ? `OpenAI request failed with status ${response.status}: ${responseText.trim()}`
+          : `OpenAI request failed with status ${response.status}`,
+      );
+    }
+
+    const payload = (await response.json()) as {
+      choices?: Array<{
+        message?: {
+          content?: string | null;
+          tool_calls?: Array<{
+            id?: string;
+            function?: { name?: string; arguments?: string };
+          }>;
+        };
+      }>;
+    };
+
+    return payload.choices?.[0]?.message ?? {};
+  }
+
+  private async requestCodexMessage(): Promise<{
+    content?: string | null;
+    tool_calls?: Array<{
+      id?: string;
+      function?: { name?: string; arguments?: string };
+    }>;
+  }> {
+    const input = sliceResponsesInputToLatestToolTurn(
+      openAICompatibleMessagesToResponsesInput(this.messages),
+    );
+    const tools = this.toolRuntime.definitions.map((tool) => ({
+      type: "function" as const,
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.input_schema,
+      strict: false,
+    }));
+
+    const response = await this.fetchImpl(
+      "https://chatgpt.com/backend-api/codex/responses",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+          ...(this.openAIAccountId ? { "ChatGPT-Account-Id": this.openAIAccountId } : {}),
+          "User-Agent": "codex-cli/0.117.0",
+          originator: "codex_cli_rs",
+          "x-client-request-id": randomUUID(),
+        },
+        body: JSON.stringify({
+          model: this.model,
+          instructions: this.systemPrompt,
+          input,
+          tools,
+          tool_choice: tools.length > 0 ? "auto" : "none",
+          parallel_tool_calls: true,
+          reasoning: { effort: "none" },
+          store: false,
+          stream: true,
+          include: [],
+          text: {
+            format: { type: "text" },
+            verbosity: "medium",
+          },
+        }),
+      },
+    );
+
+    const responseText = await response.text().catch(() => "");
+    if (!response.ok) {
+      throw new Error(
+        responseText.trim().length > 0
+          ? `OpenAI request failed with status ${response.status}: ${responseText.trim()}`
+          : `OpenAI request failed with status ${response.status}`,
+      );
+    }
+
+    const parsed = parseResponsesSseToResult(responseText);
+    const toolCalls = parsed.content
+      .filter((item): item is { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } =>
+        isRecord(item) && item.type === "tool_use" && typeof item.id === "string" && typeof item.name === "string",
+      )
+      .map((item) => ({
+        id: item.id,
+        function: {
+          name: item.name,
+          arguments: JSON.stringify(item.input ?? {}),
+        },
+      }));
+    const content = parsed.content
+      .filter((item): item is { type: "text"; text: string } =>
+        isRecord(item) && item.type === "text" && typeof item.text === "string",
+      )
+      .map((item) => item.text)
+      .join("");
+
+    return {
+      content,
+      ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+    };
+  }
+
   async runTurn(
     prompt: string,
     attachments: readonly ProviderInputAttachment[] = [],
@@ -196,56 +348,9 @@ export class OpenAIProvider implements LlmProvider {
     let assistantText = "";
 
     for (let i = 0; i < 8; i += 1) {
-      const response = await this.fetchImpl(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${this.apiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            model: this.model,
-            messages: this.messages,
-            tools: this.toolRuntime.definitions.map((tool) => ({
-              type: "function",
-              function: {
-                name: tool.name,
-                description: tool.description,
-                parameters: tool.input_schema,
-              },
-            })),
-            tool_choice: "auto",
-            ...(this.reasoning.support.status === "supported"
-              && this.reasoning.effort !== "unsupported"
-              ? { reasoning: { effort: this.reasoning.effort } }
-              : {}),
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const responseText = await response.text().catch(() => "");
-        throw new Error(
-          responseText.trim().length > 0
-            ? `OpenAI request failed with status ${response.status}: ${responseText.trim()}`
-            : `OpenAI request failed with status ${response.status}`,
-        );
-      }
-
-      const payload = (await response.json()) as {
-        choices?: Array<{
-          message?: {
-            content?: string | null;
-            tool_calls?: Array<{
-              id?: string;
-              function?: { name?: string; arguments?: string };
-            }>;
-          };
-        }>;
-      };
-
-      const message = payload.choices?.[0]?.message;
+      const message = this.runtime === "codex"
+        ? await this.requestCodexMessage()
+        : await this.requestOpenApiMessage();
       assistantText = typeof message?.content === "string" ? message.content : "";
       const toolCalls = message?.tool_calls ?? [];
 
@@ -727,6 +832,8 @@ export function createRuntimeProvider(args: CreateRuntimeProviderArgs): LlmProvi
       reasoning: args.reasoning,
       ...(args.toolRuntime ? { toolRuntime: args.toolRuntime } : {}),
       ...(args.systemPrompt ? { systemPrompt: args.systemPrompt } : {}),
+      ...(args.openAIRuntime ? { runtime: args.openAIRuntime } : {}),
+      ...(args.openAIAccountId !== undefined ? { openAIAccountId: args.openAIAccountId } : {}),
     });
   }
 
@@ -747,6 +854,195 @@ export function createRuntimeProvider(args: CreateRuntimeProviderArgs): LlmProvi
     ...(args.toolRuntime ? { toolRuntime: args.toolRuntime } : {}),
     ...(args.systemPrompt ? { systemPrompt: args.systemPrompt } : {}),
   });
+}
+
+function openAICompatibleMessagesToResponsesInput(messages: readonly OpenAIMessage[]): Array<Record<string, unknown>> {
+  const input: Array<Record<string, unknown>> = [];
+
+  for (const message of messages) {
+    if (message.role === "tool") {
+      input.push({
+        type: "function_call_output",
+        call_id: message.tool_call_id,
+        output: [{ type: "input_text", text: message.content }],
+      });
+      continue;
+    }
+
+    if (message.role === "assistant" && message.content.length > 0) {
+      input.push({
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: message.content }],
+      });
+    } else if (message.role === "user") {
+      const text = typeof message.content === "string"
+        ? message.content
+        : message.content
+          .filter((part): part is { type: "text"; text: string } => part.type === "text")
+          .map((part) => part.text)
+          .join("\n");
+      if (text.length > 0) {
+        input.push({
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text }],
+        });
+      }
+    }
+
+    if (message.role === "assistant" && Array.isArray(message.tool_calls)) {
+      for (const toolCall of message.tool_calls) {
+        if (!isRecord(toolCall)) {
+          continue;
+        }
+        const fn = isRecord(toolCall.function) ? toolCall.function : {};
+        input.push({
+          type: "function_call",
+          call_id: typeof toolCall.id === "string" ? toolCall.id : `call_${randomUUID()}`,
+          name: typeof fn.name === "string" ? fn.name : "tool",
+          arguments: typeof fn.arguments === "string" ? fn.arguments : "{}",
+        });
+      }
+    }
+  }
+
+  return input;
+}
+
+function sliceResponsesInputToLatestToolTurn(input: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  let trailingOutputStart = -1;
+
+  for (let index = input.length - 1; index >= 0; index -= 1) {
+    const item = input[index];
+    if (isRecord(item) && item.type === "function_call_output" && typeof item.call_id === "string") {
+      trailingOutputStart = index;
+      continue;
+    }
+    if (trailingOutputStart !== -1) {
+      break;
+    }
+  }
+
+  if (trailingOutputStart === -1) {
+    return input;
+  }
+
+  const trailingCallIds = new Set(
+    input
+      .slice(trailingOutputStart)
+      .filter((item) => isRecord(item) && item.type === "function_call_output" && typeof item.call_id === "string")
+      .map((item) => String(item.call_id)),
+  );
+
+  let startIndex = trailingOutputStart;
+  for (let index = trailingOutputStart - 1; index >= 0; index -= 1) {
+    const item = input[index];
+    if (!isRecord(item)) {
+      continue;
+    }
+    if (item.type === "function_call" && typeof item.call_id === "string" && trailingCallIds.has(item.call_id)) {
+      startIndex = index;
+      continue;
+    }
+    if (item.type === "message") {
+      startIndex = index;
+      break;
+    }
+  }
+
+  return input.slice(startIndex);
+}
+
+function parseResponsesSseToResult(sseText: string): {
+  responseId: string | null;
+  content: Array<Record<string, unknown>>;
+} {
+  const blocks: Array<Record<string, unknown>> = [];
+  const textByMessageId = new Map<string, string>();
+  let responseId: string | null = null;
+
+  for (const event of parseSseJsonEvents(sseText)) {
+    const type = typeof event.type === "string" ? event.type : "";
+
+    if (type === "response.output_text.delta") {
+      const itemId = typeof event.item_id === "string" ? event.item_id : `msg_${randomUUID()}`;
+      const delta = typeof event.delta === "string" ? event.delta : "";
+      textByMessageId.set(itemId, (textByMessageId.get(itemId) ?? "") + delta);
+      continue;
+    }
+
+    if (type === "response.completed" && isRecord(event.response) && typeof event.response.id === "string") {
+      responseId = event.response.id;
+      continue;
+    }
+
+    if (type !== "response.output_item.done" || !isRecord(event.item)) {
+      continue;
+    }
+
+    const item = event.item;
+    const itemType = typeof item.type === "string" ? item.type : "";
+
+    if (itemType === "message" && item.role === "assistant") {
+      const content = Array.isArray(item.content) ? item.content : [];
+      const text = content
+        .map((part) =>
+          isRecord(part) && part.type === "output_text" && typeof part.text === "string" ? part.text : "",
+        )
+        .filter(Boolean)
+        .join("");
+      const fallbackText = text.length > 0 ? text : typeof item.id === "string" ? (textByMessageId.get(item.id) ?? "") : "";
+      if (fallbackText.length > 0) {
+        blocks.push({ type: "text", text: fallbackText });
+      }
+      continue;
+    }
+
+    if (itemType === "function_call") {
+      let input: Record<string, unknown> = {};
+      if (typeof item.arguments === "string" && item.arguments.trim().length > 0) {
+        try {
+          const parsed = JSON.parse(item.arguments);
+          input = isRecord(parsed) ? parsed : {};
+        } catch {
+          input = {};
+        }
+      }
+      blocks.push({
+        type: "tool_use",
+        id: typeof item.call_id === "string" ? item.call_id : `toolu_${randomUUID()}`,
+        name: typeof item.name === "string" ? item.name : "tool",
+        input,
+      });
+    }
+  }
+
+  return {
+    responseId,
+    content: blocks.length > 0 ? blocks : [{ type: "text", text: "" }],
+  };
+}
+
+function parseSseJsonEvents(sseText: string): Array<Record<string, unknown>> {
+  return (sseText ?? "")
+    .split(/\n\n+/)
+    .map((chunk) => {
+      const dataLines = chunk
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim())
+        .filter(Boolean);
+      if (dataLines.length === 0) {
+        return null;
+      }
+      try {
+        return JSON.parse(dataLines.join("\n")) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    })
+    .filter((event): event is Record<string, unknown> => event !== null);
 }
 
 function emitProviderTrace(

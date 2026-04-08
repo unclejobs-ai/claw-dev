@@ -42,8 +42,37 @@ export type AppConfig = {
   mode: ModeProfileId;
   authLabel: string;
   reasoning: AppReasoningConfig;
+  openAIRuntime?: "api" | "codex";
+  openAIAccountId?: string | null;
   authIssueMessage?: string;
 };
+
+function parseJwtPayload(token: string): Record<string, unknown> | null {
+  const payloadPart = token.split(".")[1];
+  if (!payloadPart) {
+    return null;
+  }
+  try {
+    const payload = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf8"));
+    return typeof payload === "object" && payload !== null ? payload as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+function tokenHasModelRequestScope(token: string): boolean {
+  const payload = parseJwtPayload(token);
+  if (!payload) {
+    return true;
+  }
+  const scopeValue = payload.scp ?? payload.scope;
+  const scopes = Array.isArray(scopeValue)
+    ? scopeValue.filter((value): value is string => typeof value === "string")
+    : typeof scopeValue === "string"
+      ? scopeValue.split(/\s+/).filter(Boolean)
+      : [];
+  return scopes.length === 0 || scopes.includes("model.request");
+}
 
 function resolveReasoningConfig(input: {
   provider: ProviderId;
@@ -105,24 +134,6 @@ export async function loadConfig(
   }).activeMode.id;
 
   if (provider === "openai") {
-    const apiKey = parsed.data.OPENAI_API_KEY?.trim();
-    if (apiKey) {
-      const model = overrides?.model ?? parsed.data.OPENAI_MODEL;
-      return {
-        provider,
-        apiKey,
-        model,
-        mode,
-        authLabel: "api-key-env",
-        reasoning: resolveReasoningConfig({
-          provider,
-          model,
-          mode,
-          ...(overrides?.reasoning ? { override: overrides.reasoning } : {}),
-        }),
-      };
-    }
-
     const auth = await resolveOpenAIAuth({
       env: process.env,
       ...(process.env.UNCLECODE_OPENAI_CREDENTIALS_PATH?.trim()
@@ -149,6 +160,15 @@ export async function loadConfig(
         model,
         mode,
         authLabel,
+        openAIRuntime:
+          auth.authType === "oauth"
+          && (
+            auth.source === "codex-auth-file"
+            || (auth.source === "env-openai-auth-token" && !tokenHasModelRequestScope(auth.bearerToken))
+          )
+            ? "codex"
+            : "api",
+        openAIAccountId: auth.accountId ?? null,
         reasoning: resolveReasoningConfig({
           provider,
           model,

@@ -471,6 +471,8 @@ async function loadWorkCliSession(argv: readonly string[]) {
     cwd,
     reasoning: config.reasoning,
     ...(systemPromptAppendix ? { systemPrompt: systemPromptAppendix } : {}),
+    ...(config.openAIRuntime ? { openAIRuntime: config.openAIRuntime } : {}),
+    ...(config.openAIAccountId !== undefined ? { openAIAccountId: config.openAIAccountId } : {}),
   });
 
   const agent = new WorkAgent({

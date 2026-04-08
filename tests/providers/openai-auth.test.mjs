@@ -165,7 +165,7 @@ test("package resolveOpenAIAuth prefers a valid later Codex auth over an expired
   assert.equal(result.source, "codex-auth-file");
 });
 
-test("package resolveOpenAIAuth rejects oauth tokens that lack model.request scope", async () => {
+test("package resolveOpenAIAuth accepts codex oauth tokens without model.request scope", async () => {
   const futureExp = Math.floor(Date.now() / 1000) + 3600;
   const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
   const payload = Buffer.from(JSON.stringify({ exp: futureExp, scp: ["openid", "profile", "offline_access"] })).toString("base64url");
@@ -183,8 +183,7 @@ test("package resolveOpenAIAuth rejects oauth tokens that lack model.request sco
     }),
   });
 
-  assert.equal(result.status, "missing");
+  assert.equal(result.status, "ok");
   assert.equal(result.authType, "oauth");
   assert.equal(result.source, "codex-auth-file");
-  assert.equal(result.reason, "auth-insufficient-scope");
 });

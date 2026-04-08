@@ -33,6 +33,8 @@ type RuntimeProviderArgs = {
   cwd: string;
   reasoning: AppReasoningConfig;
   systemPrompt?: string;
+  openAIRuntime?: "api" | "codex";
+  openAIAccountId?: string | null;
 };
 
 const toolRuntime = {

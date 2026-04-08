@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -86,6 +86,35 @@ test("resolveOpenAIAuthStatus reports insufficient-scope oauth honestly", async 
     assert.equal(status.authType, "oauth");
     assert.equal(status.expiresAt, "insufficient-scope");
     assert.equal(status.isExpired, true);
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("resolveOpenAIAuthStatus accepts codex oauth files without model.request scope", async () => {
+  const futureExp = Math.floor(Date.now() / 1000) + 3600;
+  const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ exp: futureExp, scp: ["openid", "profile", "offline_access", "api.connectors.read"] })).toString("base64url");
+  const token = `${header}.${payload}.sig`;
+  const rootDir = mkdtempSync(path.join(os.tmpdir(), "unclecode-status-codex-"));
+  const codexDir = path.join(rootDir, ".codex");
+
+  try {
+    mkdirSync(codexDir, { recursive: true });
+    writeFileSync(
+      path.join(codexDir, "auth.json"),
+      JSON.stringify({ tokens: { access_token: token } }),
+      "utf8",
+    );
+
+    const status = await resolveOpenAIAuthStatus({
+      env: { HOME: rootDir },
+    });
+
+    assert.equal(status.activeSource, "oauth-file");
+    assert.equal(status.authType, "oauth");
+    assert.equal(status.expiresAt, null);
+    assert.equal(status.isExpired, false);
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
   }
