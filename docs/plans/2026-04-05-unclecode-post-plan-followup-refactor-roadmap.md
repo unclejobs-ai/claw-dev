@@ -85,10 +85,10 @@ These are the largest remaining owner files and therefore the highest-likelihood
 - Modify: `tests/contracts/tui-work-shell.contract.test.mjs`
 - Modify: `tests/orchestrator/work-shell-engine.test.mjs`
 
-- [ ] Step 1: Add source contracts for the new target seams introduced by this roadmap.
-- [ ] Step 2: Prefer ownership assertions and file-presence checks over brittle formatting assumptions where possible.
-- [ ] Step 3: Keep regex assertions narrow to architecture, not incidental formatting.
-- [ ] Step 4: Run targeted contract coverage before implementation work in each downstream phase.
+- [x] Step 1: Add source contracts for the new target seams introduced by this roadmap.
+- [x] Step 2: Prefer ownership assertions and file-presence checks over brittle formatting assumptions where possible.
+- [x] Step 3: Keep regex assertions narrow to architecture, not incidental formatting.
+- [x] Step 4: Run targeted contract coverage before implementation work in each downstream phase.
 
 ---
 

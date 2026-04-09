@@ -184,6 +184,42 @@ test("Dashboard props derive from the shared TuiRenderOptions seam", () => {
   );
 });
 
+test("dashboard hotspot re-exports extracted dashboard owner seams instead of regrowing local wrappers", () => {
+  const tuiSource = readFileSync(
+    path.join(workspaceRoot, "packages/tui/src/index.tsx"),
+    "utf8",
+  );
+  const dashboardSource = readFileSync(
+    path.join(workspaceRoot, "packages/tui/src/work-shell-dashboard.tsx"),
+    "utf8",
+  );
+  const dashboardSyncSource = readFileSync(
+    path.join(workspaceRoot, "packages/tui/src/work-shell-dashboard-sync.ts"),
+    "utf8",
+  );
+
+  assert.match(tuiSource, /export \* from "\.\/work-shell-dashboard\.js"/);
+  assert.match(tuiSource, /export \* from "\.\/work-shell-dashboard-sync\.js"/);
+  assert.match(dashboardSource, /export function EmbeddedWorkShellPane</);
+  assert.match(
+    dashboardSyncSource,
+    /export function createWorkShellDashboardHomePatch/,
+  );
+  assert.match(
+    dashboardSyncSource,
+    /export function createWorkShellDashboardHomeSyncState/,
+  );
+  assert.doesNotMatch(
+    tuiSource,
+    /export function createWorkShellDashboardHomePatch\(/,
+  );
+  assert.doesNotMatch(
+    tuiSource,
+    /export function createWorkShellDashboardHomeSyncState\(/,
+  );
+  assert.doesNotMatch(tuiSource, /export function EmbeddedWorkShellPane</);
+});
+
 test("embedded work dashboard snapshot and render-option helpers are formalized as shared TUI seams", () => {
   const tuiSource = readFileSync(
     path.join(workspaceRoot, "packages/tui/src/index.tsx"),

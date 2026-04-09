@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   Composer,
@@ -55,6 +58,65 @@ import {
   useWorkShellPaneState,
   useWorkShellSlashState,
 } from "../../packages/tui/src/index.tsx";
+
+const testDirectory = path.dirname(fileURLToPath(import.meta.url));
+const workspaceRoot = path.resolve(testDirectory, "../..");
+
+test("work-shell hotspot re-exports extracted helper owner seams instead of regrowing local copies", () => {
+  const tuiSource = readFileSync(
+    path.join(workspaceRoot, "packages/tui/src/index.tsx"),
+    "utf8",
+  );
+  const hooksSource = readFileSync(
+    path.join(workspaceRoot, "packages/tui/src/work-shell-hooks.ts"),
+    "utf8",
+  );
+  const panelsSource = readFileSync(
+    path.join(workspaceRoot, "packages/tui/src/work-shell-panels.ts"),
+    "utf8",
+  );
+  const viewSource = readFileSync(
+    path.join(workspaceRoot, "packages/tui/src/work-shell-view.tsx"),
+    "utf8",
+  );
+  const inputSource = readFileSync(
+    path.join(workspaceRoot, "packages/tui/src/work-shell-input.ts"),
+    "utf8",
+  );
+
+  assert.match(tuiSource, /export \* from "\.\/work-shell-hooks\.js"/);
+  assert.match(tuiSource, /export \* from "\.\/work-shell-panels\.js"/);
+  assert.match(tuiSource, /export \* from "\.\/work-shell-input\.js"/);
+  assert.match(tuiSource, /export \* from "\.\/work-shell-view\.js"/);
+  assert.match(hooksSource, /export function useWorkShellDashboardHomeSync\(/);
+  assert.match(hooksSource, /export function useWorkShellInputController\(/);
+  assert.match(hooksSource, /export function useWorkShellPaneState</);
+  assert.match(hooksSource, /export function useWorkShellSlashState\(/);
+  assert.match(panelsSource, /export function buildContextPanel\(/);
+  assert.match(panelsSource, /export function buildInlineCommandPanel\(/);
+  assert.match(viewSource, /export function formatWorkShellProviderTitle\(/);
+  assert.match(viewSource, /export function getWorkShellEntryPresentation\(/);
+  assert.match(inputSource, /export function resolveWorkShellInputAction\(/);
+  assert.match(inputSource, /export function resolveWorkShellSubmitAction\(/);
+  assert.doesNotMatch(
+    tuiSource,
+    /export function useWorkShellDashboardHomeSync\(/,
+  );
+  assert.doesNotMatch(
+    tuiSource,
+    /export function useWorkShellInputController\(/,
+  );
+  assert.doesNotMatch(
+    tuiSource,
+    /export function resolveWorkShellInputAction\(/,
+  );
+  assert.doesNotMatch(
+    tuiSource,
+    /export function resolveWorkShellSubmitAction\(/,
+  );
+  assert.doesNotMatch(tuiSource, /export function buildContextPanel\(/);
+  assert.doesNotMatch(tuiSource, /export function buildInlineCommandPanel\(/);
+});
 
 test("formatWorkShellProviderTitle humanizes known providers for the unified work tab", () => {
   assert.equal(formatWorkShellProviderTitle("openai"), "UncleCode · OpenAI");
