@@ -16,11 +16,17 @@ test("work-shell engine imports helper ownership seams instead of regrowing loca
     "packages/orchestrator/src/work-shell-engine.ts",
   );
 
-  assert.match(engineSource, /from "\.\/work-shell-engine-builtins\.js"/);
+  assert.match(
+    engineSource,
+    /from "\.\/work-shell-engine-builtin-runtime\.js"/,
+  );
+  assert.match(
+    engineSource,
+    /from "\.\/work-shell-engine-command-runtime\.js"/,
+  );
   assert.match(engineSource, /from "\.\/work-shell-engine-context\.js"/);
   assert.match(engineSource, /from "\.\/work-shell-engine-execution\.js"/);
   assert.match(engineSource, /from "\.\/work-shell-engine-lifecycle\.js"/);
-  assert.match(engineSource, /from "\.\/work-shell-engine-operations\.js"/);
   assert.match(engineSource, /from "\.\/work-shell-engine-panels\.js"/);
   assert.match(engineSource, /from "\.\/work-shell-engine-persistence\.js"/);
   assert.match(engineSource, /from "\.\/work-shell-engine-submit\.js"/);
@@ -29,6 +35,7 @@ test("work-shell engine imports helper ownership seams instead of regrowing loca
   assert.match(engineSource, /from "\.\/work-shell-engine-state\.js"/);
 
   assert.doesNotMatch(engineSource, /private async executePromptTurn\(/);
+  assert.doesNotMatch(engineSource, /private async handleTraceEvent\(/);
   assert.doesNotMatch(engineSource, /private async finalizeAssistantReply\(/);
   assert.doesNotMatch(
     engineSource,
@@ -43,6 +50,9 @@ test("work-shell engine imports helper ownership seams instead of regrowing loca
 test("work-shell helper owner files expose the builtin, execution, operational, trace, persistence, and turn seams", () => {
   const builtinsSource = readWorkspaceFile(
     "packages/orchestrator/src/work-shell-engine-builtins.ts",
+  );
+  const builtinRuntimeSource = readWorkspaceFile(
+    "packages/orchestrator/src/work-shell-engine-builtin-runtime.ts",
   );
   const contextSource = readWorkspaceFile(
     "packages/orchestrator/src/work-shell-engine-context.ts",
@@ -80,6 +90,10 @@ test("work-shell helper owner files expose the builtin, execution, operational, 
   assert.match(
     builtinsSource,
     /export function createLoadedSkillBuiltinResult/,
+  );
+  assert.match(
+    builtinRuntimeSource,
+    /export async function executeWorkShellBuiltinSubmit/,
   );
 
   assert.match(
@@ -186,4 +200,6 @@ test("work-shell helper owner files expose the builtin, execution, operational, 
   assert.match(traceSource, /export function resolveBusyStatusFromTraceEvent/);
   assert.match(traceSource, /export function createTraceEventBusyPatch/);
   assert.match(traceSource, /export function resolveVerboseTraceEntry/);
+  assert.match(traceSource, /export function applyWorkShellTraceEvent/);
+  assert.match(traceSource, /export function applyWorkShellTraceEvent/);
 });

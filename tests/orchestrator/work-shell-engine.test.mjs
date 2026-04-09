@@ -21,6 +21,12 @@ import {
   resolveModelBuiltinResult,
   resolveReasoningBuiltinResult,
 } from "../../packages/orchestrator/src/work-shell-engine-builtins.ts";
+import { executeWorkShellBuiltinSubmit } from "../../packages/orchestrator/src/work-shell-engine-builtin-runtime.ts";
+import {
+  executeInlineCommandSubmit,
+  executeLocalCommandSubmit,
+  executeSecureApiKeyEntrySubmit,
+} from "../../packages/orchestrator/src/work-shell-engine-command-runtime.ts";
 import {
   buildAuthProgressPanelLines,
   buildPromptCommandPrompt,
@@ -81,6 +87,7 @@ import {
   runWorkShellPostTurnSuccessEffects,
 } from "../../packages/orchestrator/src/work-shell-engine-post-turns.ts";
 import {
+  applyWorkShellTraceEvent,
   createTraceEventBusyPatch,
   extractCurrentTurnStartedAt,
   resolveBusyStatusFromTraceEvent,
@@ -549,6 +556,149 @@ test("work-shell builtin helpers resolve panels, transcript entries, and runtime
   );
 });
 
+test("work-shell builtin runtime helper orchestrates stateful builtin transitions without engine-local switch logic", async () => {
+  const appendedEntries = [];
+  const statePatches = [];
+  const runtimeSettings = [];
+  const snapshots = [];
+  let exited = 0;
+  let cleared = 0;
+  let openedSessions = 0;
+  let reloadedContext = 0;
+
+  await executeWorkShellBuiltinSubmit({
+    line: "/reasoning low",
+    builtinCommand: { kind: "reasoning" },
+    state: createState({ authLabel: "oauth-file" }),
+    options: {
+      provider: "openai",
+      model: "gpt-5.4",
+      mode: "default",
+      authLabel: "oauth-file",
+      reasoning: supportedReasoning,
+      cwd: "/repo",
+      contextSummaryLines: ["Loaded guidance: AGENTS.md"],
+    },
+    currentContextSummaryLines: ["Loaded guidance: AGENTS.md"],
+    buildHelpPanel() {
+      return { title: "Help", lines: ["help"] };
+    },
+    buildContextPanel,
+    buildStatusPanel(options, reasoning, authLabel) {
+      return { title: "Status", lines: [options.model, reasoning.effort, authLabel] };
+    },
+    resolveReasoningCommand(input, reasoning) {
+      assert.equal(input, "/reasoning low");
+      return {
+        nextReasoning: { ...reasoning, effort: "low", source: "override" },
+        message: "Reasoning set to low.",
+      };
+    },
+    resolveModelCommand() {
+      return undefined;
+    },
+    modeDefaultReasoning: supportedReasoning,
+    listAvailableSkills: async () => [{ name: "analyze", path: "/skills/analyze", scope: "project", summary: "Look deeper." }],
+    loadNamedSkill: async (name) => ({ name, path: `/skills/${name}`, content: `${name} content`, attempts: [] }),
+    toolLines: ["read", "write"],
+    clearAgent() {
+      cleared += 1;
+    },
+    updateRuntimeSettings(settings) {
+      runtimeSettings.push(settings);
+    },
+    onExit() {
+      exited += 1;
+    },
+    openSessionsPanel: async () => {
+      openedSessions += 1;
+    },
+    reloadContextState: async () => {
+      reloadedContext += 1;
+    },
+    appendEntries: (...entries) => {
+      appendedEntries.push(...entries);
+    },
+    setState: (patch) => {
+      statePatches.push(patch);
+    },
+    persistSessionSnapshot: async (state, summary, traceMode) => {
+      snapshots.push({ state, summary, traceMode });
+    },
+    lastSessionSummary: "Work shell ready.",
+  });
+
+  await executeWorkShellBuiltinSubmit({
+    line: "/sessions",
+    builtinCommand: { kind: "sessions" },
+    state: createState({ authLabel: "oauth-file" }),
+    options: {
+      provider: "openai",
+      model: "gpt-5.4",
+      mode: "default",
+      authLabel: "oauth-file",
+      reasoning: supportedReasoning,
+      cwd: "/repo",
+      contextSummaryLines: ["Loaded guidance: AGENTS.md"],
+    },
+    currentContextSummaryLines: ["Loaded guidance: AGENTS.md"],
+    buildHelpPanel() {
+      return { title: "Help", lines: ["help"] };
+    },
+    buildContextPanel,
+    buildStatusPanel(options, reasoning, authLabel) {
+      return { title: "Status", lines: [options.model, reasoning.effort, authLabel] };
+    },
+    resolveReasoningCommand(_input, reasoning) {
+      return { nextReasoning: reasoning, message: "noop" };
+    },
+    resolveModelCommand() {
+      return undefined;
+    },
+    modeDefaultReasoning: supportedReasoning,
+    listAvailableSkills: async () => [],
+    loadNamedSkill: async (name) => ({ name, path: `/skills/${name}`, content: `${name} content`, attempts: [] }),
+    toolLines: [],
+    clearAgent() {
+      cleared += 1;
+    },
+    updateRuntimeSettings(settings) {
+      runtimeSettings.push(settings);
+    },
+    onExit() {
+      exited += 1;
+    },
+    openSessionsPanel: async () => {
+      openedSessions += 1;
+    },
+    reloadContextState: async () => {
+      reloadedContext += 1;
+    },
+    appendEntries: (...entries) => {
+      appendedEntries.push(...entries);
+    },
+    setState: (patch) => {
+      statePatches.push(patch);
+    },
+    persistSessionSnapshot: async (state, summary, traceMode) => {
+      snapshots.push({ state, summary, traceMode });
+    },
+    lastSessionSummary: "Work shell ready.",
+  });
+
+  assert.equal(runtimeSettings.length, 1);
+  assert.equal(runtimeSettings[0]?.reasoning?.effort, "low");
+  assert.equal(statePatches[0]?.reasoning?.effort, "low");
+  assert.equal(statePatches[0]?.panel?.title, "Status");
+  assert.equal(openedSessions, 1);
+  assert.equal(reloadedContext, 0);
+  assert.equal(exited, 0);
+  assert.equal(cleared, 0);
+  assert.deepEqual(snapshots, []);
+  assert.equal(appendedEntries[0]?.text, "/reasoning low");
+  assert.equal(appendedEntries.at(-1)?.text, "/sessions");
+});
+
 test("work-shell turn helpers build summaries and permission-stall continuations", async () => {
   assert.deepEqual(
     createChatPromptTurnInput({
@@ -1004,6 +1154,111 @@ test("work-shell lifecycle helpers load initial state, session panels, and overl
   });
 });
 
+test("work-shell command runtime helpers orchestrate secure, inline, and local command submits", async () => {
+  const commandEntries = [];
+  const commandPatches = [];
+  const commandTraceLines = [];
+
+  await executeSecureApiKeyEntrySubmit({
+    line: "sk-secret-123",
+    state: createState({ authLabel: "api-key-env" }),
+    options: {
+      provider: "openai",
+      model: "gpt-5.4",
+      mode: "default",
+      authLabel: "api-key-env",
+      reasoning: supportedReasoning,
+      cwd: "/repo",
+      contextSummaryLines: ["Loaded guidance: AGENTS.md"],
+    },
+    buildStatusPanel(options, reasoning, authLabel) {
+      return { title: "Status", lines: [options.model, reasoning.effort, authLabel] };
+    },
+    buildInlineCommandPanel(args, lines) {
+      return { title: args.join(" "), lines };
+    },
+    formatInlineCommandResultSummary(args, lines) {
+      return `${args.join(" ")} :: ${lines[0] ?? "No output."}`;
+    },
+    saveApiKeyAuth: async () => ["API key login saved.", "Auth: api-key-file"],
+    refreshAuthState: async () => ({ authLabel: "api-key-file", authIssueLines: [] }),
+    extractAuthLabel: (lines) => lines[1]?.replace(/^Auth:\s*/, ""),
+    applyAuthIssueLines() {},
+    formatWorkShellError: (message) => `ERR:${message}`,
+    appendEntries: (...entries) => {
+      commandEntries.push(...entries);
+    },
+    setState: (patch) => {
+      commandPatches.push(patch);
+    },
+    pushTraceLine: (line) => {
+      commandTraceLines.push(line);
+    },
+  });
+
+  await executeInlineCommandSubmit({
+    line: "/auth login --api-key sk-secret-123",
+    slashCommand: ["auth", "login", "--api-key", "sk-secret-123"],
+    state: createState({ authLabel: "api-key-env" }),
+    resolveWorkShellInlineCommand: async (_args, _runInlineCommand, onProgress) => {
+      onProgress?.("Opening browser…");
+      return { lines: ["OAuth login complete.", "Auth: oauth-file"], failed: false };
+    },
+    runInlineCommand: async () => [],
+    refineInlineCommandResultLines: undefined,
+    refreshAuthState: async () => ({ authLabel: "oauth-file", authIssueLines: [] }),
+    extractAuthLabel: (lines) => lines[1]?.replace(/^Auth:\s*/, ""),
+    applyAuthIssueLines() {},
+    buildInlineCommandPanel(args, lines) {
+      return { title: args.join(" "), lines };
+    },
+    formatInlineCommandResultSummary(args, lines) {
+      return `${args.join(" ")} :: ${lines[0] ?? "No output."}`;
+    },
+    appendEntries: (...entries) => {
+      commandEntries.push(...entries);
+    },
+    setState: (patch) => {
+      commandPatches.push(patch);
+    },
+    pushTraceLine: (line) => {
+      commandTraceLines.push(line);
+    },
+  });
+
+  await executeLocalCommandSubmit({
+    line: "/remember session keep this",
+    localCommand: { kind: "remember", scope: "session", summary: "keep this" },
+    cwd: "/repo",
+    sessionId: "work-1",
+    listScopedMemoryLines: async () => ["session-1", "session-2"],
+    writeScopedMemory: async ({ scope, summary }) => ({ memoryId: `${scope}:${summary}` }),
+    formatAgentTraceLine: (event) => `memory ${event.summary}`,
+    appendEntries: (...entries) => {
+      commandEntries.push(...entries);
+    },
+    setState: (patch) => {
+      commandPatches.push(patch);
+    },
+    pushTraceLine: (line) => {
+      commandTraceLines.push(line);
+    },
+  });
+
+  assert.equal(commandEntries[0]?.text, "✓ auth key");
+  assert.match(commandEntries[1]?.text ?? "", /auth key :: API key login saved/);
+  assert.match(commandEntries[2]?.text ?? "", /\[REDACTED\]/);
+  assert.match(commandEntries.at(-1)?.text ?? "", /memory keep this/);
+  assert.equal(commandPatches[0]?.isBusy, true);
+  assert.equal(commandPatches[1]?.composerMode, "default");
+  assert.equal(commandPatches[2]?.isBusy, false);
+  assert.equal(commandPatches[3]?.isBusy, true);
+  assert.equal(commandPatches[4]?.panel?.title, "Auth");
+  assert.equal(commandPatches[5]?.authLabel, "oauth-file");
+  assert.deepEqual(commandPatches.at(-1), { memoryLines: ["session-1", "session-2"] });
+  assert.deepEqual(commandTraceLines, ["→ auth key", "✓ auth key", "→ auth login --api-key [REDACTED]", "✓ auth login --api-key [REDACTED]", "memory keep this"]);
+});
+
 test("work-shell operational helpers resolve secure auth entry, inline command results, and memory operations", async () => {
   const memoryPanel = await loadWorkShellMemoriesPanel({
     cwd: "/repo",
@@ -1114,7 +1369,7 @@ test("work-shell post-turn helpers persist summaries and auth recovery determini
   assert.deepEqual(refreshedAuthIssues, ["Auth issue: saved OAuth needs refresh."]);
 });
 
-test("work-shell trace helpers derive busy status, state patches, and transcript roles honestly", () => {
+test("work-shell trace helpers derive busy status, apply live updates, and map transcript roles honestly", () => {
   assert.equal(
     resolveBusyStatusFromTraceEvent({ type: "turn.started" }, "thinking inspect repo"),
     "thinking inspect repo",
@@ -1160,6 +1415,27 @@ test("work-shell trace helpers derive busy status, state patches, and transcript
   assert.equal(resolveTraceEntryRole({ type: "provider.calling" }), "tool");
   assert.equal(extractCurrentTurnStartedAt({ type: "turn.started", startedAt: 123 }), 123);
   assert.equal(extractCurrentTurnStartedAt({ type: "tool.started", startedAt: 123 }), undefined);
+
+  const livePatches = [];
+  const liveEntries = [];
+  const liveTraceLines = [];
+  applyWorkShellTraceEvent({
+    state: createState({ traceMode: "verbose", isBusy: true }),
+    event: { type: "provider.calling", status: "running" },
+    formatAgentTraceLine: () => "calling openai gpt-5.4",
+    setState: (patch) => {
+      livePatches.push(patch);
+    },
+    appendEntries: (...entries) => {
+      liveEntries.push(...entries);
+    },
+    pushTraceLine: (line) => {
+      liveTraceLines.push(line);
+    },
+  });
+  assert.equal(livePatches.length, 1);
+  assert.equal(liveEntries[0]?.text, "calling openai gpt-5.4");
+  assert.deepEqual(liveTraceLines, ["calling openai gpt-5.4"]);
 });
 
 test("work-shell snapshot and context loaders stay available through their helper seams", async () => {

@@ -1,27 +1,12 @@
 import { randomUUID } from "node:crypto";
 
+import { executeWorkShellBuiltinSubmit } from "./work-shell-engine-builtin-runtime.js";
 import {
-  createAuthKeyBuiltinResult,
-  createContextBuiltinResult,
-  createHelpBuiltinResult,
-  createLoadedSkillBuiltinResult,
-  createSkillLoadErrorEntries,
-  createSkillsBuiltinResult,
-  createSkillUsageErrorEntries,
-  createStatusBuiltinResult,
-  createToolsBuiltinResult,
-  createTraceModeBuiltinResult,
-  resolveModelBuiltinResult,
-  resolveReasoningBuiltinResult,
-} from "./work-shell-engine-builtins.js";
-import {
-  buildPromptCommandPrompt,
-  createAuthLoginPendingPanel,
-  createMemoriesPanel,
-  createSecureApiKeyEntryPanel,
-  redactSensitiveInlineCommandLine,
-  resolveVisibleInlineCommand,
-} from "./work-shell-engine-commands.js";
+  executeInlineCommandSubmit,
+  executeLocalCommandSubmit,
+  executeSecureApiKeyEntrySubmit,
+} from "./work-shell-engine-command-runtime.js";
+import { buildPromptCommandPrompt } from "./work-shell-engine-commands.js";
 import {
   applyAuthIssueLinesToContextSummaryLines,
   reloadWorkShellContextState,
@@ -37,25 +22,15 @@ import {
   type WorkShellSubmitRoute,
 } from "./work-shell-engine-submit.js";
 import * as WorkShellExecution from "./work-shell-engine-execution.js";
-import * as WorkShellOperations from "./work-shell-engine-operations.js";
-import {
-  createWorkShellStatusPanel,
-  createWorkspaceReloadCompleteEntry,
-  createWorkspaceReloadEntries,
-} from "./work-shell-engine-panels.js";
+import { createWorkShellStatusPanel } from "./work-shell-engine-panels.js";
 import * as WorkShellTurns from "./work-shell-engine-turns.js";
 import { createWorkShellSessionSnapshotInput } from "./work-shell-engine-persistence.js";
 import {
   appendWorkShellEntries,
   createInitialWorkShellEngineState,
-  createWorkShellAuthStatePatch,
   createWorkShellTraceLinePatch,
-  createWorkShellTraceModePatch,
 } from "./work-shell-engine-state.js";
-import {
-  createTraceEventBusyPatch,
-  resolveVerboseTraceEntry,
-} from "./work-shell-engine-trace.js";
+import { applyWorkShellTraceEvent } from "./work-shell-engine-trace.js";
 import type { WorkShellReasoningConfig } from "./reasoning.js";
 
 export type WorkShellChatEntry = {
@@ -392,7 +367,14 @@ export class WorkShellEngine<
 
   async initialize(): Promise<void> {
     this.agent.setTraceListener((event) => {
-      void this.handleTraceEvent(event);
+      applyWorkShellTraceEvent({
+        state: this.state,
+        event,
+        formatAgentTraceLine: this.formatAgentTraceLine,
+        setState: (patch) => this.setState(patch),
+        appendEntries: (...entries) => this.appendEntries(...entries),
+        pushTraceLine: (line) => this.pushTraceLine(line),
+      });
     });
     await this.persistSessionSnapshot("idle", this.lastSessionSummary).catch(() => undefined);
 
@@ -492,301 +474,90 @@ export class WorkShellEngine<
   }
 
   private async handleSecureApiKeyEntrySubmit(line: string): Promise<void> {
-    this.setState({ isBusy: true });
-    try {
-      const result = await WorkShellOperations.resolveSecureApiKeyEntrySubmission({
-        line,
-        currentAuthLabel: this.state.authLabel,
-        saveApiKeyAuth: this.saveApiKeyAuth,
-        refreshAuthState: this.refreshAuthState,
-        extractAuthLabel: this.extractAuthLabel,
-        applyAuthIssueLines: (authIssueLines) => this.applyAuthIssueLines(authIssueLines),
-        formatWorkShellError: this.formatWorkShellError,
-      });
-      if (result.kind === "unavailable") {
-        this.appendEntries({ role: "system", text: "Secure API key entry is unavailable." });
-        this.setState({
-          composerMode: "default",
-          panel: createWorkShellStatusPanel({
-            options: this.options,
-            stateModel: this.state.model,
-            reasoning: this.state.reasoning,
-            authLabel: this.state.authLabel,
-            buildStatusPanel: this.buildStatusPanel,
-          }),
-        });
-        return;
-      }
-      if (result.kind === "error") {
-        this.appendEntries({ role: "system", text: result.message });
-        this.setState({ panel: createSecureApiKeyEntryPanel(result.message) });
-        return;
-      }
-      this.appendEntries(
-        { role: "tool", text: "✓ auth key" },
-        { role: "system", text: this.formatInlineCommandResultSummary(["auth", "key"], result.resultLines) },
-      );
-      this.setState({
-        composerMode: "default",
-        ...createWorkShellAuthStatePatch({
-          state: this.state,
-          authLabel: result.nextAuthLabel,
-          authLauncherLines: result.resultLines,
-        }),
-        panel: this.buildInlineCommandPanel(["auth", "key"], result.resultLines),
-      });
-      this.pushTraceLine("→ auth key", true);
-      this.pushTraceLine("✓ auth key", true);
-    } finally {
-      this.setState({ isBusy: false });
-    }
+    await executeSecureApiKeyEntrySubmit<Reasoning>({
+      line,
+      state: this.state,
+      options: this.options,
+      buildStatusPanel: this.buildStatusPanel,
+      buildInlineCommandPanel: this.buildInlineCommandPanel,
+      formatInlineCommandResultSummary: this.formatInlineCommandResultSummary,
+      saveApiKeyAuth: this.saveApiKeyAuth,
+      refreshAuthState: this.refreshAuthState,
+      extractAuthLabel: this.extractAuthLabel,
+      applyAuthIssueLines: (authIssueLines) => this.applyAuthIssueLines(authIssueLines),
+      formatWorkShellError: this.formatWorkShellError,
+      appendEntries: (...entries) => this.appendEntries(...entries),
+      setState: (patch) => this.setState(patch),
+      pushTraceLine: (traceLine, preservePanel) => this.pushTraceLine(traceLine, preservePanel),
+    });
   }
 
   private async handleBuiltinSubmit(
     line: string,
     builtinCommand: Extract<WorkShellSubmitRoute, { readonly kind: "builtin" }>["command"],
   ): Promise<void> {
-    switch (builtinCommand.kind) {
-      case "exit":
-        this.onExit();
-        return;
-      case "clear":
-        this.agent.clear();
-        this.setState({ entries: [{ role: "system", text: "Conversation cleared." }] });
-        return;
-      case "help": {
-        const result = createHelpBuiltinResult(line, this.buildHelpPanel);
-        this.appendEntries(...result.entries);
-        this.setState({ panel: result.panel });
-        return;
-      }
-      case "context": {
-        const result = createContextBuiltinResult({
-          line,
-          contextSummaryLines: this.currentContextSummaryLines,
-          state: this.state,
-          buildContextPanel: this.buildContextPanel,
-        });
-        this.appendEntries(...result.entries);
-        this.setState({ panel: result.panel });
-        return;
-      }
-      case "reload":
-        this.appendEntries(...createWorkspaceReloadEntries(line));
-        await this.reloadContextState();
-        this.appendEntries(createWorkspaceReloadCompleteEntry());
-        return;
-      case "status": {
-        const result = createStatusBuiltinResult({
-          line,
-          reasoning: this.state.reasoning,
-          authLabel: this.state.authLabel,
-          buildStatusPanel: (reasoning, authLabel) => createWorkShellStatusPanel({
-            options: this.options,
-            stateModel: this.state.model,
-            reasoning,
-            authLabel,
-            buildStatusPanel: this.buildStatusPanel,
-          }),
-        });
-        this.appendEntries(...result.entries);
-        this.setState({ panel: result.panel });
-        return;
-      }
-      case "trace-mode": {
-        const result = createTraceModeBuiltinResult({
-          line,
-          traceMode: builtinCommand.traceMode,
-          state: this.state,
-          contextSummaryLines: this.currentContextSummaryLines,
-          buildContextPanel: this.buildContextPanel,
-        });
-        this.appendEntries(...result.entries);
-        this.setState(result.patch);
-        await this.persistSessionSnapshot("idle", this.lastSessionSummary, builtinCommand.traceMode).catch(() => undefined);
-        return;
-      }
-      case "sessions":
-        this.appendEntries({ role: "user", text: line });
-        await this.openSessionsPanel();
-        return;
-      case "reasoning": {
-        const result = resolveReasoningBuiltinResult({
-          line,
-          currentReasoning: this.state.reasoning,
-          modeDefaultReasoning: this.modeDefaultReasoning(),
-          authLabel: this.state.authLabel,
-          resolveReasoningCommand: this.resolveReasoningCommand,
-          buildStatusPanel: (reasoning, authLabel) => createWorkShellStatusPanel({
-            options: this.options,
-            stateModel: this.state.model,
-            reasoning,
-            authLabel,
-            buildStatusPanel: this.buildStatusPanel,
-          }),
-        });
-        this.agent.updateRuntimeSettings({ reasoning: result.nextReasoning });
-        this.appendEntries(...result.entries);
-        this.setState({
-          reasoning: result.nextReasoning,
-          panel: result.panel,
-        });
-        return;
-      }
-      case "model": {
-        const result = resolveModelBuiltinResult({
-          line,
-          currentModel: this.state.model,
-          currentReasoning: this.state.reasoning,
-          modeDefaultReasoning: this.modeDefaultReasoning(),
-          resolveModelCommand: this.resolveModelCommand,
-        });
-        if (!result) {
-          return;
-        }
-        if (result.shouldUpdateRuntime) {
-          this.agent.updateRuntimeSettings({ model: result.nextModel, reasoning: result.nextReasoning });
-        }
-        this.appendEntries(...result.entries);
-        this.setState({
-          model: result.nextModel,
-          reasoning: result.nextReasoning,
-          panel: result.panel,
-        });
-        await this.persistSessionSnapshot("idle", this.lastSessionSummary).catch(() => undefined);
-        return;
-      }
-      case "tools":
-        this.appendEntries(...createToolsBuiltinResult(line, this.toolLines));
-        return;
-      case "auth-key": {
-        const result = createAuthKeyBuiltinResult(line);
-        this.appendEntries(...result.entries);
-        this.setState({
-          composerMode: result.composerMode,
-          panel: result.panel,
-        });
-        return;
-      }
-      case "skills": {
-        const skills = await this.listAvailableSkills(this.options.cwd);
-        const result = createSkillsBuiltinResult(line, skills);
-        this.appendEntries(...result.entries);
-        this.setState({ panel: result.panel });
-        return;
-      }
-      case "skill": {
-        if (!builtinCommand.skillName) {
-          this.appendEntries(...createSkillUsageErrorEntries(line));
-          return;
-        }
-
-        try {
-          const skill = await this.loadNamedSkill(builtinCommand.skillName, this.options.cwd);
-          const result = createLoadedSkillBuiltinResult(line, skill);
-          this.appendEntries(...result.entries);
-          this.setState({ panel: result.panel });
-        } catch (error) {
-          this.appendEntries(...createSkillLoadErrorEntries(line, error));
-        }
-        return;
-      }
-    }
+    await executeWorkShellBuiltinSubmit({
+      line,
+      builtinCommand,
+      state: this.state,
+      options: this.options,
+      currentContextSummaryLines: this.currentContextSummaryLines,
+      buildHelpPanel: this.buildHelpPanel,
+      buildContextPanel: this.buildContextPanel,
+      buildStatusPanel: this.buildStatusPanel,
+      resolveReasoningCommand: this.resolveReasoningCommand,
+      resolveModelCommand: this.resolveModelCommand,
+      modeDefaultReasoning: this.modeDefaultReasoning(),
+      listAvailableSkills: this.listAvailableSkills,
+      loadNamedSkill: this.loadNamedSkill,
+      toolLines: this.toolLines,
+      clearAgent: () => this.agent.clear(),
+      updateRuntimeSettings: (settings) => this.agent.updateRuntimeSettings(settings),
+      onExit: this.onExit,
+      openSessionsPanel: () => this.openSessionsPanel(),
+      reloadContextState: () => this.reloadContextState(),
+      appendEntries: (...entries) => this.appendEntries(...entries),
+      setState: (patch) => this.setState(patch),
+      persistSessionSnapshot: (state, summary, traceMode) => this.persistSessionSnapshot(state, summary, traceMode),
+      lastSessionSummary: this.lastSessionSummary,
+    });
   }
 
   private async handleInlineCommandSubmit(line: string, slashCommand: readonly string[]): Promise<void> {
-    const runInlineCommand = this.runInlineCommand;
-    if (!runInlineCommand) {
-      return;
-    }
-    const { isAuthLogin } = resolveVisibleInlineCommand({ line, slashCommand });
-    this.appendEntries({ role: "user", text: redactSensitiveInlineCommandLine(line) });
-    this.setState({
-      isBusy: true,
-      ...(isAuthLogin ? { panel: createAuthLoginPendingPanel() } : {}),
+    await executeInlineCommandSubmit<Reasoning>({
+      line,
+      slashCommand,
+      state: this.state,
+      resolveWorkShellInlineCommand: this.resolveWorkShellInlineCommand,
+      runInlineCommand: this.runInlineCommand,
+      refineInlineCommandResultLines: this.refineInlineCommandResultLines,
+      refreshAuthState: this.refreshAuthState,
+      extractAuthLabel: this.extractAuthLabel,
+      applyAuthIssueLines: (authIssueLines) => this.applyAuthIssueLines(authIssueLines),
+      buildInlineCommandPanel: this.buildInlineCommandPanel,
+      formatInlineCommandResultSummary: this.formatInlineCommandResultSummary,
+      appendEntries: (...entries) => this.appendEntries(...entries),
+      setState: (patch) => this.setState(patch),
+      pushTraceLine: (traceLine, preservePanel) => this.pushTraceLine(traceLine, preservePanel),
     });
-
-    try {
-      const result = await WorkShellOperations.resolveInlineOperationalCommandResult({
-        line,
-        slashCommand,
-        currentAuthLabel: this.state.authLabel,
-        resolveWorkShellInlineCommand: this.resolveWorkShellInlineCommand,
-        runInlineCommand,
-        refineInlineCommandResultLines: this.refineInlineCommandResultLines,
-        refreshAuthState: this.refreshAuthState,
-        extractAuthLabel: this.extractAuthLabel,
-        applyAuthIssueLines: (authIssueLines) => this.applyAuthIssueLines(authIssueLines),
-        onAuthProgressLines: (lines) => {
-          this.setState({
-            panel: {
-              title: "Auth",
-              lines,
-            },
-          });
-        },
-      });
-      this.appendEntries(
-        { role: "tool", text: result.completionLine },
-        { role: "system", text: this.formatInlineCommandResultSummary(result.visibleArgs, result.resultLines) },
-      );
-      this.setState({
-        authLabel: result.nextAuthLabel,
-        ...(result.isAuthCommand ? { authLauncherLines: result.resultLines } : {}),
-        panel: this.buildInlineCommandPanel(result.visibleArgs, result.resultLines),
-      });
-      this.pushTraceLine(`→ ${result.visibleArgs.join(" ")}`, true);
-      this.pushTraceLine(result.completionLine, true);
-    } finally {
-      this.setState({ isBusy: false });
-    }
   }
 
   private async handleLocalCommandSubmit(
     line: string,
     localCommand: Extract<WorkShellSubmitRoute, { readonly kind: "local-command" }>["localCommand"],
   ): Promise<void> {
-    if (localCommand.kind === "memories") {
-      const { sessionMemory, projectMemory } = await WorkShellOperations.loadWorkShellMemoriesPanel({
-        cwd: this.options.cwd,
-        sessionId: this.sessionId,
-        listScopedMemoryLines: this.listScopedMemoryLines,
-      });
-      this.appendEntries(
-        { role: "user", text: line },
-        { role: "system", text: "Memories shown." },
-      );
-      this.setState({
-        memoryLines: sessionMemory,
-        panel: createMemoriesPanel(sessionMemory, projectMemory),
-      });
-      return;
-    }
-
-    if ("usageError" in localCommand) {
-      this.appendEntries(
-        { role: "user", text: line },
-        { role: "system", text: localCommand.usageError },
-      );
-      return;
-    }
-
-    const result = await WorkShellOperations.writeWorkShellRememberCommand({
-      command: localCommand,
+    await executeLocalCommandSubmit<Reasoning>({
+      line,
+      localCommand,
       cwd: this.options.cwd,
       sessionId: this.sessionId,
-      writeScopedMemory: this.writeScopedMemory,
       listScopedMemoryLines: this.listScopedMemoryLines,
+      writeScopedMemory: this.writeScopedMemory,
       formatAgentTraceLine: this.formatAgentTraceLine,
+      appendEntries: (...entries) => this.appendEntries(...entries),
+      setState: (patch) => this.setState(patch),
+      pushTraceLine: (traceLine, preservePanel) => this.pushTraceLine(traceLine, preservePanel),
     });
-    if (localCommand.scope === "session") {
-      this.setState({ memoryLines: result.nextMemoryLines });
-    }
-    this.appendEntries(
-      { role: "user", text: line },
-      { role: "tool", text: result.memoryTrace },
-    );
-    this.pushTraceLine(result.memoryTrace);
   }
 
   private async handleChatSubmit(line: string): Promise<void> {
@@ -856,30 +627,6 @@ export class WorkShellEngine<
       pushTraceLine: (traceLine) => this.pushTraceLine(traceLine),
       persistSessionSnapshot: (sessionState, summary) => this.persistSessionSnapshot(sessionState, summary),
     });
-  }
-
-  private async handleTraceEvent(event: TraceEvent): Promise<void> {
-    const line = this.formatAgentTraceLine(event);
-    const busyPatch = createTraceEventBusyPatch({
-      state: this.state,
-      event: event as { readonly type: string; readonly status?: string; readonly startedAt?: unknown },
-      line,
-    });
-    if (busyPatch) {
-      this.setState(busyPatch);
-    }
-
-    const traceEntry = resolveVerboseTraceEntry({
-      traceMode: this.state.traceMode,
-      event,
-      line,
-    });
-    if (!traceEntry) {
-      return;
-    }
-
-    this.appendEntries(traceEntry);
-    this.pushTraceLine(line);
   }
 
   private modeDefaultReasoning(): Reasoning {

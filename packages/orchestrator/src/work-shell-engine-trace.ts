@@ -70,3 +70,37 @@ export function resolveVerboseTraceEntry(input: {
     text: input.line,
   };
 }
+
+export function applyWorkShellTraceEvent<
+  Reasoning extends WorkShellReasoningConfig,
+  TraceEvent extends { readonly type: string },
+>(input: {
+  state: WorkShellEngineState<Reasoning>;
+  event: TraceEvent;
+  formatAgentTraceLine: (event: TraceEvent) => string;
+  setState: (patch: Partial<WorkShellEngineState<Reasoning>>) => void;
+  appendEntries: (...entries: readonly WorkShellChatEntry[]) => void;
+  pushTraceLine: (line: string) => void;
+}): void {
+  const line = input.formatAgentTraceLine(input.event);
+  const busyPatch = createTraceEventBusyPatch({
+    state: input.state,
+    event: input.event,
+    line,
+  });
+  if (busyPatch) {
+    input.setState(busyPatch);
+  }
+
+  const traceEntry = resolveVerboseTraceEntry({
+    traceMode: input.state.traceMode,
+    event: input.event,
+    line,
+  });
+  if (!traceEntry) {
+    return;
+  }
+
+  input.appendEntries(traceEntry);
+  input.pushTraceLine(line);
+}
