@@ -48,6 +48,7 @@ import {
 import {
   applyAuthIssueLinesToContextSummaryLines,
   loadInitialWorkShellContextState,
+  loadWorkShellContextState,
   reloadWorkShellContextState,
 } from "../../packages/orchestrator/src/work-shell-engine-context.ts";
 import {
@@ -66,10 +67,7 @@ import {
   createWorkspaceReloadEntries,
   loadRecentSessionsPanel,
 } from "../../packages/orchestrator/src/work-shell-engine-panels.ts";
-import {
-  createWorkShellSessionSnapshotInput,
-  loadWorkShellContextState,
-} from "../../packages/orchestrator/src/work-shell-engine-persistence.ts";
+import { createWorkShellSessionSnapshotInput } from "../../packages/orchestrator/src/work-shell-engine-persistence.ts";
 import {
   isWorkShellAuthFailure,
   resolveWorkShellFailureAuthLabel,
@@ -982,7 +980,7 @@ test("work-shell trace helpers derive busy status, state patches, and transcript
   assert.equal(extractCurrentTurnStartedAt({ type: "tool.started", startedAt: 123 }), undefined);
 });
 
-test("work-shell persistence helpers build snapshot payloads and reload context state", async () => {
+test("work-shell snapshot and context loaders stay available through their helper seams", async () => {
   const snapshot = createWorkShellSessionSnapshotInput({
     cwd: "/repo",
     sessionId: "work-1",
