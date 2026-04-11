@@ -2382,3 +2382,12 @@ test("WorkShellEngine can inject a continue follow-up when a reply stalls on per
   assert.equal(prompts.length, 2);
   assert.match(prompts[1] ?? "", /Continue automatically without asking for permission/i);
 });
+
+test("resolveWorkerBudget returns correct budget per mode including yolo", async () => {
+  const { resolveWorkerBudget } = await import("../../packages/orchestrator/src/work-agent.ts");
+  assert.equal(resolveWorkerBudget("default"), 1);
+  assert.equal(resolveWorkerBudget("yolo"), 4);
+  assert.equal(resolveWorkerBudget("ultrawork"), 5);
+  assert.equal(resolveWorkerBudget("search"), 3);
+  assert.equal(resolveWorkerBudget("analyze"), 3);
+});
