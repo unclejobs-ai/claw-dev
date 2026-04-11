@@ -26,6 +26,33 @@ export interface OrchestratedWorkTurnAgent<
   runTurn(prompt: string, attachments?: readonly Attachment[]): Promise<{ text: string }>;
 }
 
+export function parseAgentPlanResponse(text: string): readonly PlannedWorkTask[] {
+  const jsonMatch = text.match(/\[[\s\S]*]/);
+  if (!jsonMatch) return [];
+
+  try {
+    const parsed: unknown = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter(
+        (item): item is { id: string; summary: string; prompt: string } =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as Record<string, unknown>).id === "string" &&
+          typeof (item as Record<string, unknown>).summary === "string" &&
+          typeof (item as Record<string, unknown>).prompt === "string",
+      )
+      .map((item) => ({
+        id: item.id,
+        summary: item.summary,
+        prompt: item.prompt,
+      }));
+  } catch {
+    return [];
+  }
+}
+
 function extractFilePaths(prompt: string): readonly string[] {
   return [...new Set(prompt.match(/[\w./-]+\.\w{1,5}/g) ?? [])];
 }
@@ -125,6 +152,31 @@ export class WorkAgent<
     this.directAgent.clear();
   }
 
+  private async planTasks(prompt: string): Promise<readonly PlannedWorkTask[]> {
+    const staticTasks = buildComplexTasks(prompt);
+    if (this.mode !== "yolo" && this.mode !== "ultrawork") {
+      return staticTasks;
+    }
+
+    try {
+      const planPrompt = [
+        "Break this request into 2-4 independent subtasks.",
+        "Return ONLY a JSON array of objects with {id, summary, prompt} fields.",
+        "Each subtask should be independently executable.",
+        `Request: ${prompt}`,
+      ].join("\n");
+      const result = await this.directAgent.runTurn(planPrompt, []);
+      const parsed = parseAgentPlanResponse(result.text);
+      if (parsed.length >= 2) {
+        return parsed;
+      }
+    } catch {
+      // Fall back to static decomposition on any failure
+    }
+
+    return staticTasks;
+  }
+
   setTraceListener(listener?: ((event: OrchestratedWorkAgentTraceEvent<TraceEvent>) => void) | undefined): void {
     this.traceListener = listener;
     this.directAgent.setTraceListener(listener ? (event) => this.emitTrace(event) : undefined);
@@ -153,7 +205,7 @@ export class WorkAgent<
     const orchestrator = createTurnOrchestrator<PlannedWorkTask, { id: string; summary: string }>({
       runSimpleTurn: (simplePrompt) => this.directAgent.runTurn(simplePrompt, attachments),
       runResearchTurn: (researchPrompt) => this.directAgent.runTurn(researchPrompt, attachments),
-      planComplexTurn: async (complexPrompt) => buildComplexTasks(complexPrompt),
+      planComplexTurn: async (complexPrompt) => this.planTasks(complexPrompt),
       executeComplexTask: async (task) => {
         const result = await this.directAgent.runTurn(task.prompt, []);
         return { id: task.id, summary: result.text };

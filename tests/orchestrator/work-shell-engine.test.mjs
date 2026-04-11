@@ -2403,3 +2403,21 @@ test("resolveModeDefaultReasoning preserves unsupported and tags supported with 
   assert.equal(result.effort, "high");
   assert.equal(result.source, "mode-default");
 });
+
+test("parseAgentPlanResponse extracts valid tasks from agent JSON output", async () => {
+  const { parseAgentPlanResponse } = await import("../../packages/orchestrator/src/work-agent.ts");
+
+  const validJson = `Here are the tasks:
+[
+  {"id": "task-1", "summary": "Read the files", "prompt": "Read src/index.ts"},
+  {"id": "task-2", "summary": "Fix the bug", "prompt": "Fix the null check in auth.ts"}
+]`;
+  const tasks = parseAgentPlanResponse(validJson);
+  assert.equal(tasks.length, 2);
+  assert.equal(tasks[0]?.id, "task-1");
+  assert.equal(tasks[1]?.summary, "Fix the bug");
+
+  assert.deepEqual(parseAgentPlanResponse("no json here"), []);
+  assert.deepEqual(parseAgentPlanResponse("[invalid json"), []);
+  assert.deepEqual(parseAgentPlanResponse('["not objects"]'), []);
+});
