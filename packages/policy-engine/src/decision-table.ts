@@ -142,6 +142,10 @@ export function applyModeDecision(request: PolicyRequest, baseDecision: PolicyDe
     return baseDecision;
   }
 
+  if (request.mode === "yolo" && request.trustZone === "workspace" && request.intent === "tool_execution") {
+    return createDecision("allow", "mode", "YOLO mode allows workspace tool execution without review.", request);
+  }
+
   if (request.mode === "search" && request.intent === "tool_execution") {
     return createDecision("deny", "mode", "Search mode forbids tool execution by default.", request);
   }
@@ -157,6 +161,10 @@ export function applyRuntimeDecision(
   request: PolicyRequest,
   currentDecision: PolicyDecision,
 ): PolicyDecision {
+  if (currentDecision.source === "mode" && currentDecision.effect === "allow") {
+    return currentDecision;
+  }
+
   if (request.runtimeMode === "remote" && currentDecision.effect === "allow") {
     return createDecision("prompt", "runtime", "Remote runtime actions require review.", request);
   }

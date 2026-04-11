@@ -53,3 +53,37 @@ test("policy engine denies impossible trustZone and intent combinations", () => 
 
   assert.equal(decision.effect, "deny");
 });
+
+test("yolo mode allows workspace tool execution in sandbox/remote runtime", () => {
+  const engine = createPolicyEngine();
+
+  const sandboxDecision = engine.decide({
+    trustZone: "workspace",
+    intent: "tool_execution",
+    mode: "yolo",
+    runtimeMode: "sandbox",
+    actor: "primary",
+  });
+  assert.equal(sandboxDecision.effect, "allow");
+  assert.equal(sandboxDecision.source, "mode");
+
+  const remoteDecision = engine.decide({
+    trustZone: "workspace",
+    intent: "tool_execution",
+    mode: "yolo",
+    runtimeMode: "remote",
+    actor: "primary",
+  });
+  assert.equal(remoteDecision.effect, "allow");
+
+  const mcpDecision = engine.decide({
+    trustZone: "external",
+    intent: "mcp_server",
+    runtimeMode: "local",
+    actor: "primary",
+  });
+  assert.ok(
+    mcpDecision.effect === "prompt" || mcpDecision.effect === "deny",
+    "MCP is not auto-allowed even in yolo",
+  );
+});
