@@ -277,7 +277,7 @@ export function useWorkShellInputController(input: {
         );
         return;
       case "cycle-mode":
-        void input.cycleMode(action.nextMode);
+        void Promise.resolve(input.cycleMode(action.nextMode)).catch(() => undefined);
         return;
       case "cancel-sensitive-input":
         input.cancelSensitiveInput?.();
@@ -384,7 +384,7 @@ export function useWorkShellPaneState<
   });
 
   const openEngineSessions = useCallback(() => {
-    void input.engine.openSessionsPanel();
+    void input.engine.openSessionsPanel().catch(() => undefined);
   }, [input.engine]);
 
   const handleSubmit = useCallback(

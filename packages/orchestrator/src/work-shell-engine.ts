@@ -379,18 +379,26 @@ export class WorkShellEngine<
         pushTraceLine: (line) => this.pushTraceLine(line),
       });
     });
-    await this.persistSessionSnapshot("idle", this.lastSessionSummary).catch(() => undefined);
 
-    const contextState = await loadInitialWorkShellLifecycleState({
-      cwd: this.options.cwd,
-      sessionId: this.sessionId,
-      currentContextSummaryLines: this.currentContextSummaryLines,
-      listProjectBridgeLines: this.listProjectBridgeLines,
-      listScopedMemoryLines: this.listScopedMemoryLines,
-      buildContextPanel: this.buildContextPanel,
-    });
+    try {
+      await this.persistSessionSnapshot("idle", this.lastSessionSummary).catch(() => undefined);
 
-    this.setState(contextState);
+      const contextState = await loadInitialWorkShellLifecycleState({
+        cwd: this.options.cwd,
+        sessionId: this.sessionId,
+        currentContextSummaryLines: this.currentContextSummaryLines,
+        listProjectBridgeLines: this.listProjectBridgeLines,
+        listScopedMemoryLines: this.listScopedMemoryLines,
+        buildContextPanel: this.buildContextPanel,
+      });
+
+      this.setState(contextState);
+    } catch (error: unknown) {
+      this.appendEntries({
+        role: "system",
+        text: `Initialization warning: ${error instanceof Error ? error.message : String(error)}`,
+      });
+    }
   }
 
   dispose(): void {
