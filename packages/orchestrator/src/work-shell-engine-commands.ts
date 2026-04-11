@@ -15,6 +15,7 @@ export type ResolvedWorkShellBuiltinCommand =
   | { readonly kind: "sessions" }
   | { readonly kind: "tools" }
   | { readonly kind: "skills" }
+  | { readonly kind: "queue" }
   | { readonly kind: "auth-key" }
   | { readonly kind: "trace-mode"; readonly traceMode: "verbose" | "minimal" }
   | { readonly kind: "reasoning"; readonly line: string }
@@ -33,6 +34,7 @@ export function resolveWorkShellBuiltinCommand(
   if (line === "/sessions") return { kind: "sessions" };
   if (line === "/tools") return { kind: "tools" };
   if (line === "/skills") return { kind: "skills" };
+  if (line === "/queue") return { kind: "queue" };
   if (line === "/auth key") return { kind: "auth-key" };
   if (line === "/verbose" || line === "/v") {
     return { kind: "trace-mode", traceMode: "verbose" };
@@ -72,6 +74,40 @@ export function createSkillsPanel(skills: readonly WorkShellSkillListItem[]): Wo
           ...(skill.summary ? [`  ${skill.summary}`] : []),
         ])
       : ["No skills found."],
+  };
+}
+
+export function createQueuePanel(input: {
+  readonly isBusy: boolean;
+  readonly busyStatus?: string;
+  readonly mode?: string;
+  readonly workerBudget?: number;
+}): WorkShellPanel {
+  const detail = input.busyStatus?.trim();
+  const modeInfo = input.mode ? `Mode · ${input.mode}` : undefined;
+  const budgetInfo = input.workerBudget !== undefined ? `Workers · ${input.workerBudget} max` : undefined;
+  return {
+    title: "Queue",
+    lines: input.isBusy
+      ? [
+          "Current",
+          "State · running",
+          detail ? `Now · ${detail}` : "Now · active turn",
+          ...(modeInfo ? [modeInfo] : []),
+          ...(budgetInfo ? [budgetInfo] : []),
+          "",
+          "Queued",
+          "No queued work beyond the active turn.",
+        ]
+      : [
+          "Current",
+          "State · idle",
+          ...(modeInfo ? [modeInfo] : []),
+          ...(budgetInfo ? [budgetInfo] : []),
+          "",
+          "Queued",
+          "No queued work in this shell.",
+        ],
   };
 }
 

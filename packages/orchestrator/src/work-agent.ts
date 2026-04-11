@@ -22,6 +22,7 @@ export interface OrchestratedWorkTurnAgent<
   clear(): void;
   setTraceListener(listener?: ((event: TraceEvent) => void) | undefined): void;
   updateRuntimeSettings(settings: { reasoning?: Reasoning | undefined; model?: string | undefined }): void;
+  updateMode?(mode: string): void;
   runTurn(prompt: string, attachments?: readonly Attachment[]): Promise<{ text: string }>;
 }
 
@@ -64,9 +65,12 @@ function extractChangedFilesFromTasks(tasks: readonly PlannedWorkTask[]): readon
   ];
 }
 
-function resolveWorkerBudget(mode: string): number {
+export function resolveWorkerBudget(mode: string): number {
   if (mode === "ultrawork") {
     return 5;
+  }
+  if (mode === "yolo") {
+    return 4;
   }
   if (mode === "search" || mode === "analyze") {
     return 3;
@@ -80,7 +84,7 @@ export class WorkAgent<
   Reasoning extends ReasoningLike,
 > {
   private readonly directAgent: OrchestratedWorkTurnAgent<Attachment, TraceEvent, Reasoning>;
-  private readonly mode: string;
+  private mode: string;
   private reasoning: Reasoning;
   private model: string;
   private readonly runExecutableGuardianChecks?: ((input: {
@@ -129,6 +133,11 @@ export class WorkAgent<
     if (settings.model?.trim()) {
       this.model = settings.model.trim();
     }
+  }
+
+  updateMode(mode: string): void {
+    this.mode = mode;
+    this.directAgent.updateMode?.(mode);
   }
 
   async runTurn(prompt: string, attachments: readonly Attachment[] = []): Promise<{ text: string }> {

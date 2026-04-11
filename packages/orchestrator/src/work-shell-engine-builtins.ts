@@ -1,5 +1,6 @@
 import {
   createLoadedSkillPanel,
+  createQueuePanel,
   createSecureApiKeyEntryPanel,
   createSkillsPanel,
 } from "./work-shell-engine-commands.js";
@@ -207,6 +208,27 @@ export function createSkillsBuiltinResult(
       skills.length > 0 ? `Loaded ${skills.length} skills.` : "No skills found.",
     ),
     panel: createSkillsPanel(skills),
+  };
+}
+
+export function createQueueBuiltinResult(input: {
+  readonly line: string;
+  readonly isBusy: boolean;
+  readonly busyStatus?: string;
+  readonly mode?: string;
+  readonly workerBudget?: number;
+}): {
+  readonly entries: readonly WorkShellChatEntry[];
+  readonly panel: WorkShellPanel;
+} {
+  return {
+    entries: createBuiltinTranscriptEntries(input.line, input.isBusy ? "Queue shown. Active turn is still running." : "Queue shown. No queued work in this shell."),
+    panel: createQueuePanel({
+      isBusy: input.isBusy,
+      ...(input.busyStatus ? { busyStatus: input.busyStatus } : {}),
+      ...(input.mode ? { mode: input.mode } : {}),
+      ...(input.workerBudget !== undefined ? { workerBudget: input.workerBudget } : {}),
+    }),
   };
 }
 
