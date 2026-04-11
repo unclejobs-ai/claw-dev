@@ -412,6 +412,13 @@ const WorkShellConversationBlock = React.memo(function WorkShellConversationBloc
   readonly busyStatus?: string;
   readonly reasoningLabel?: string;
 }) {
+  const [spinnerFrame, setSpinnerFrame] = React.useState(0);
+  React.useEffect(() => {
+    if (!props.isBusy) return;
+    const interval = setInterval(() => setSpinnerFrame((f) => f + 1), 100);
+    return () => clearInterval(interval);
+  }, [props.isBusy]);
+
   return (
     <Box flexDirection="column" width={props.panelPlacement === "side" ? "68%" : undefined} paddingRight={props.panelPlacement === "side" ? 1 : 0}>
       <Box flexDirection="column">
@@ -434,8 +441,7 @@ const WorkShellConversationBlock = React.memo(function WorkShellConversationBloc
         })}
         {props.isBusy ? (
           <Box paddingLeft={2} marginBottom={1}>
-            <Text color={W.assistant} bold>{"✦ "}</Text>
-            <Text color={W.textMuted}>{props.busyStatus ?? (props.reasoningLabel ? `Thinking · ${props.reasoningLabel}` : "Thinking…")}</Text>
+            <Text color={W.textMuted}>{formatWorkShellBusyStatusLine(props.busyStatus ?? (props.reasoningLabel ? `Thinking · ${props.reasoningLabel}` : undefined), spinnerFrame)}</Text>
           </Box>
         ) : null}
       </Box>
