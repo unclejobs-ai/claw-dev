@@ -741,10 +741,80 @@ export function createUncleCodeProgram(): Command {
   registerModeCommands(program);
   registerResearchCommands(program);
   registerMcpCommands(program);
+  registerHarnessCommands(program);
 
   return program;
 }
 
 function isModeProfileId(value: string | undefined): value is ModeProfileId {
   return value !== undefined && MODE_PROFILE_IDS.includes(value as ModeProfileId);
+}
+
+function registerHarnessCommands(program: Command): void {
+  const harness = program.command("harness").description("Inspect and apply agent runtime harness presets");
+
+  harness
+    .command("status")
+    .description("Show the current harness configuration from .codex/config.toml")
+    .action(() => {
+      const { inspectHarnessStatus, formatHarnessStatusLines } = require("./harness.js") as typeof import("./harness.js");
+      const status = inspectHarnessStatus(process.cwd());
+      for (const line of formatHarnessStatusLines(status)) {
+        process.stdout.write(`${line}\n`);
+      }
+    });
+
+  harness
+    .command("explain")
+    .description("Explain available harness presets and how they work")
+    .action(() => {
+      const { formatHarnessExplainLines } = require("./harness.js") as typeof import("./harness.js");
+      for (const line of formatHarnessExplainLines()) {
+        process.stdout.write(`${line}\n`);
+      }
+    });
+
+  harness
+    .command("apply <preset>")
+    .description("Apply a named harness preset (e.g. yolo)")
+    .action((preset: string) => {
+      const { inspectHarnessStatus, getHarnessPresetPatch, formatHarnessStatusLines } = require("./harness.js") as typeof import("./harness.js");
+      if (preset !== "yolo") {
+        process.stderr.write(`Unknown preset: ${preset}. Available: yolo\n`);
+        process.exitCode = 1;
+        return;
+      }
+
+      const patch = getHarnessPresetPatch("yolo");
+      const status = inspectHarnessStatus(process.cwd());
+
+      if (!status.exists) {
+        process.stderr.write(`No .codex/config.toml found at ${status.configPath}\n`);
+        process.stderr.write("Install oh-my-codex or create the config first.\n");
+        process.exitCode = 1;
+        return;
+      }
+
+      const { readFileSync, writeFileSync } = require("node:fs") as typeof import("node:fs");
+      let content = readFileSync(status.configPath, "utf8");
+
+      for (const [key, value] of Object.entries(patch)) {
+        const pattern = new RegExp(`^(${key}\\s*=\\s*)"[^"]*"`, "m");
+        if (pattern.test(content)) {
+          content = content.replace(pattern, `$1"${value}"`);
+          process.stdout.write(`  ${key} → "${value}"\n`);
+        } else {
+          process.stdout.write(`  ${key} not found in config (skipped)\n`);
+        }
+      }
+
+      writeFileSync(status.configPath, content, "utf8");
+      process.stdout.write(`\nYOLO preset applied to ${status.configPath}\n`);
+
+      const updated = inspectHarnessStatus(process.cwd());
+      process.stdout.write("\nCurrent status:\n");
+      for (const line of formatHarnessStatusLines(updated)) {
+        process.stdout.write(`${line}\n`);
+      }
+    });
 }
