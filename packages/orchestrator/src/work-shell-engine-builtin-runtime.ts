@@ -13,6 +13,7 @@ import {
   resolveModelBuiltinResult,
   resolveReasoningBuiltinResult,
 } from "./work-shell-engine-builtins.js";
+import { resolveWorkerBudget } from "./work-agent.js";
 import {
   createWorkShellStatusPanel,
   createWorkspaceReloadCompleteEntry,
@@ -209,6 +210,8 @@ export async function executeWorkShellBuiltinSubmit<Reasoning extends WorkShellR
         line: input.line,
         isBusy: input.state.isBusy,
         ...(input.state.busyStatus ? { busyStatus: input.state.busyStatus } : {}),
+        mode: input.state.mode,
+        workerBudget: resolveWorkerBudget(input.state.mode),
       });
       input.appendEntries(...result.entries);
       input.setState({ panel: result.panel });
