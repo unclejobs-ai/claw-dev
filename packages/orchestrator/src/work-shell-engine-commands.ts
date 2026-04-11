@@ -16,6 +16,7 @@ export type ResolvedWorkShellBuiltinCommand =
   | { readonly kind: "tools" }
   | { readonly kind: "skills" }
   | { readonly kind: "queue" }
+  | { readonly kind: "harness" }
   | { readonly kind: "auth-key" }
   | { readonly kind: "trace-mode"; readonly traceMode: "verbose" | "minimal" }
   | { readonly kind: "reasoning"; readonly line: string }
@@ -35,6 +36,7 @@ export function resolveWorkShellBuiltinCommand(
   if (line === "/tools") return { kind: "tools" };
   if (line === "/skills") return { kind: "skills" };
   if (line === "/queue") return { kind: "queue" };
+  if (line === "/harness") return { kind: "harness" };
   if (line === "/auth key") return { kind: "auth-key" };
   if (line === "/verbose" || line === "/v") {
     return { kind: "trace-mode", traceMode: "verbose" };
@@ -108,6 +110,27 @@ export function createQueuePanel(input: {
           "Queued",
           "No queued work in this shell.",
         ],
+  };
+}
+
+export function createHarnessPanel(input: {
+  readonly mode: string;
+  readonly workerBudget: number;
+  readonly autoContinue: boolean;
+}): WorkShellPanel {
+  return {
+    title: "Harness",
+    lines: [
+      "Runtime",
+      `Mode · ${input.mode}`,
+      `Workers · ${input.workerBudget} max`,
+      `Auto-continue · ${input.autoContinue ? "enabled" : "disabled"}`,
+      "",
+      "Commands",
+      "unclecode harness status — full config",
+      "unclecode harness apply yolo — low friction",
+      "/mode set <profile> — change mode",
+    ],
   };
 }
 

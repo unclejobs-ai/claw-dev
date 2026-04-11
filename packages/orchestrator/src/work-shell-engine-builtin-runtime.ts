@@ -14,6 +14,7 @@ import {
   resolveReasoningBuiltinResult,
 } from "./work-shell-engine-builtins.js";
 import { resolveWorkerBudget } from "./work-agent.js";
+import { createHarnessPanel } from "./work-shell-engine-commands.js";
 import {
   createWorkShellStatusPanel,
   createWorkspaceReloadCompleteEntry,
@@ -215,6 +216,20 @@ export async function executeWorkShellBuiltinSubmit<Reasoning extends WorkShellR
       });
       input.appendEntries(...result.entries);
       input.setState({ panel: result.panel });
+      return;
+    }
+    case "harness": {
+      input.appendEntries(
+        { role: "user", text: input.line },
+        { role: "system", text: "Harness shown." },
+      );
+      input.setState({
+        panel: createHarnessPanel({
+          mode: input.state.mode,
+          workerBudget: resolveWorkerBudget(input.state.mode),
+          autoContinue: true,
+        }),
+      });
       return;
     }
     case "auth-key": {

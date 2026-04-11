@@ -77,6 +77,10 @@ export function getWorkShellSlashSuggestions(
       command: "/tools",
       description: "List available local tools.",
     },
+    {
+      command: "/harness",
+      description: "Show agent runtime harness and mode configuration.",
+    },
   ];
 
   const entries = [
