@@ -39,14 +39,60 @@ export const CONFIG_CORE_DEFAULTS: UncleCodeConfigLayer = {
 };
 
 function buildActiveModeSection(profile: ModeProfile): UncleCodePromptSection {
+  const shared = `Keep replies ${profile.explanationStyle} and operator-friendly.`;
+
+  if (profile.id === "search") {
+    return {
+      title: "Active Mode",
+      body: [
+        "Search mode is active.",
+        "Stay read-only and do not edit files.",
+        "If the user asks for edits, answer in at most two short lines and suggest `/mode set yolo` or `/mode set default`.",
+        shared,
+      ].join("\n"),
+    };
+  }
+
+  if (profile.id === "analyze") {
+    return {
+      title: "Active Mode",
+      body: [
+        "Analyze mode is active.",
+        "Prefer diagnosis, evidence, and concrete next steps before edits.",
+        "If editing is needed, say so briefly and suggest `/mode set yolo` or `/mode set default`.",
+        shared,
+      ].join("\n"),
+    };
+  }
+
+  if (profile.id === "ultrawork") {
+    return {
+      title: "Active Mode",
+      body: [
+        "Ultra Work mode is active.",
+        "Edit directly, use deeper search, and prefer background or parallel work when it helps.",
+        shared,
+      ].join("\n"),
+    };
+  }
+
+  if (profile.id === "yolo") {
+    return {
+      title: "Active Mode",
+      body: [
+        "YOLO mode is active.",
+        "Edit directly on clear requests and avoid needless confirmation on low-risk reversible steps.",
+        shared,
+      ].join("\n"),
+    };
+  }
+
   return {
     title: "Active Mode",
     body: [
-      `${profile.label} mode is active.`,
-      `editing: ${profile.editing}`,
-      `search depth: ${profile.searchDepth}`,
-      `background tasks: ${profile.backgroundTasks}`,
-      `explanation style: ${profile.explanationStyle}`,
+      "Default mode is active.",
+      "Edit when needed, but stay inside scope and use balanced search depth.",
+      shared,
     ].join("\n"),
   };
 }

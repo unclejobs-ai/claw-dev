@@ -3,6 +3,7 @@ import {
   createContextBuiltinResult,
   createHelpBuiltinResult,
   createLoadedSkillBuiltinResult,
+  createQueueBuiltinResult,
   createSkillLoadErrorEntries,
   createSkillsBuiltinResult,
   createSkillUsageErrorEntries,
@@ -203,6 +204,16 @@ export async function executeWorkShellBuiltinSubmit<Reasoning extends WorkShellR
     case "tools":
       input.appendEntries(...createToolsBuiltinResult(input.line, input.toolLines));
       return;
+    case "queue": {
+      const result = createQueueBuiltinResult({
+        line: input.line,
+        isBusy: input.state.isBusy,
+        ...(input.state.busyStatus ? { busyStatus: input.state.busyStatus } : {}),
+      });
+      input.appendEntries(...result.entries);
+      input.setState({ panel: result.panel });
+      return;
+    }
     case "auth-key": {
       const result = createAuthKeyBuiltinResult(input.line);
       input.appendEntries(...result.entries);

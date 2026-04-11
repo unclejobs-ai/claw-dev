@@ -266,11 +266,11 @@ These are the largest remaining owner files and therefore the highest-likelihood
 - Modify: `tests/contracts/tui-dashboard.contract.test.mjs`
 - Modify: `tests/tui/shell-state.test.mjs`
 
-- [ ] Step 1: Add failing contracts for the new TUI owner seams.
-- [ ] Step 2: Move pure action catalogs and navigation logic first.
-- [ ] Step 3: Move render-entry and Dashboard assembly second.
-- [ ] Step 4: Keep public exports stable while shrinking `index.tsx` into a barrel/assembly layer.
-- [ ] Step 5: Re-run targeted TUI/contracts coverage.
+- [x] Step 1: Add failing contracts for the new TUI owner seams.
+- [x] Step 2: Move pure action catalogs and navigation logic first.
+- [x] Step 3: Move render-entry and Dashboard assembly second.
+- [x] Step 4: Keep public exports stable while shrinking `index.tsx` into a barrel/assembly layer.
+- [x] Step 5: Re-run targeted TUI/contracts coverage.
 
 ### Task 13: Introduce a shared shell runtime/store model
 **Why:** same-tree embedded work currently depends on a mutable controller bridge and patch/refresh choreography. The next major architectural gain is a shared store/reducer model.

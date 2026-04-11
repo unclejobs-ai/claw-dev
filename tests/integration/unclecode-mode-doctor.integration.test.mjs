@@ -23,7 +23,7 @@ test("built unclecode cli can persist and report the active mode", () => {
   try {
     const setResult = spawnSync(
       "node",
-      [builtCliEntrypoint, "mode", "set", "ultrawork"],
+      [builtCliEntrypoint, "mode", "set", "yolo"],
       {
         cwd,
         encoding: "utf8",
@@ -31,12 +31,12 @@ test("built unclecode cli can persist and report the active mode", () => {
     );
 
     assert.equal(setResult.status, 0, setResult.stderr);
-    assert.match(setResult.stdout, /Active mode saved:\s+ultrawork/i);
+    assert.match(setResult.stdout, /Active mode saved:\s+yolo/i);
 
     const savedConfig = JSON.parse(
       readFileSync(path.join(cwd, ".unclecode", "config.json"), "utf8"),
     );
-    assert.equal(savedConfig.mode, "ultrawork");
+    assert.equal(savedConfig.mode, "yolo");
 
     const statusResult = spawnSync(
       "node",
@@ -48,7 +48,8 @@ test("built unclecode cli can persist and report the active mode", () => {
     );
 
     assert.equal(statusResult.status, 0, statusResult.stderr);
-    assert.match(statusResult.stdout, /Active mode:\s+ultrawork/i);
+    assert.match(statusResult.stdout, /Active mode:\s+yolo/i);
+    assert.match(statusResult.stdout, /Label:\s+YOLO/i);
     assert.match(statusResult.stdout, /Source:\s+project config/i);
   } finally {
     rmSync(cwd, { recursive: true, force: true });

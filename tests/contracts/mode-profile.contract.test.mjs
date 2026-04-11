@@ -15,6 +15,7 @@ test("mode-profile fixtures expose canonical modes plus command and skill metada
     "ultrawork",
     "search",
     "analyze",
+    "yolo",
   ]);
 
   assert.deepEqual(MODE_PROFILES.default, {
@@ -55,6 +56,16 @@ test("mode-profile fixtures expose canonical modes plus command and skill metada
     backgroundTasks: "allowed",
     explanationStyle: "detailed",
     reasoningDefault: "high",
+  });
+
+  assert.deepEqual(MODE_PROFILES.yolo, {
+    id: "yolo",
+    label: "YOLO",
+    editing: "allowed",
+    searchDepth: "balanced",
+    backgroundTasks: "preferred",
+    explanationStyle: "concise",
+    reasoningDefault: "medium",
   });
 
   assert.deepEqual(COMMAND_TYPES, ["prompt", "local", "local-jsx"]);

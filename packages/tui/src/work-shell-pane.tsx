@@ -77,6 +77,7 @@ export function WorkShellPane<
   const {
     entries,
     model,
+    mode,
     reasoning,
     authLabel,
     isBusy,
@@ -113,7 +114,7 @@ export function WorkShellPane<
       model={model}
       reasoningLabel={reasoningLabel}
       reasoningSupported={reasoningSupported}
-      mode={props.mode}
+      mode={mode}
       authLabel={authDisplayLabel}
       entries={entries}
       isBusy={isBusy}

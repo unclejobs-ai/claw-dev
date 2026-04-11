@@ -1,4 +1,4 @@
-export const MODE_PROFILE_IDS = ["default", "ultrawork", "search", "analyze"] as const;
+export const MODE_PROFILE_IDS = ["default", "ultrawork", "search", "analyze", "yolo"] as const;
 
 export type ModeProfileId = (typeof MODE_PROFILE_IDS)[number];
 
@@ -68,5 +68,14 @@ export const MODE_PROFILES = {
     backgroundTasks: "allowed",
     explanationStyle: "detailed",
     reasoningDefault: "high",
+  },
+  yolo: {
+    id: "yolo",
+    label: "YOLO",
+    editing: "allowed",
+    searchDepth: "balanced",
+    backgroundTasks: "preferred",
+    explanationStyle: "concise",
+    reasoningDefault: "medium",
   },
 } as const satisfies Readonly<Record<ModeProfileId, ModeProfile>>;

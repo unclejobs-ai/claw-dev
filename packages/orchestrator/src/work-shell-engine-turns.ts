@@ -58,6 +58,26 @@ export function createConversationTurnSummary(input: {
   return summarizeWorkShellText(`Q: ${input.transcriptText} · A: ${input.assistantText}`);
 }
 
+const EDIT_INTENT_PATTERNS = [
+  /\b(edit|modify|change|update|fix|patch|implement|add|remove|delete|refactor|rewrite|create)\b/i,
+  /(수정|변경|고쳐|구현|추가|삭제|리팩터|리팩토|바꿔|만들어|넣어|보강)/,
+];
+
+export function detectEditIntent(text: string): boolean {
+  const normalized = text.trim();
+  return normalized.length > 0 && EDIT_INTENT_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export function resolveReadOnlyModeGuard(input: {
+  mode: string;
+  prompt: string;
+}): string | undefined {
+  if (input.mode === "search" && detectEditIntent(input.prompt)) {
+    return "Search mode is read-only. Shift+Tab or run /mode set yolo, then resend the edit request.";
+  }
+  return undefined;
+}
+
 const PERMISSION_STALL_PATTERNS = [
   /^(?:if you want|if you'd like|if you want me to|if you'd like me to)\b/i,
   /^(?:let me know|tell me) if you (?:want|would like)\b/i,

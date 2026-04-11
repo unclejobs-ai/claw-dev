@@ -147,6 +147,7 @@ export type WorkShellSlashSuggestion = {
 export type WorkShellPaneRuntimeState<Reasoning = unknown> = {
   readonly entries: readonly WorkShellEntry[];
   readonly model: string;
+  readonly mode: string;
   readonly reasoning: Reasoning;
   readonly authLabel: string;
   readonly isBusy: boolean;
@@ -235,9 +236,11 @@ export function useWorkShellInputController(input: {
   readonly selectedSlashCommand?: string;
   readonly setSelectedSlashIndex: (value: number | ((current: number) => number)) => void;
   readonly isBusy: boolean;
+  readonly currentMode: string;
   readonly onExit: () => void;
   readonly onRequestSessionsView?: (() => void) | undefined;
   readonly openEngineSessions: () => void;
+  readonly cycleMode: (nextMode: string) => void | Promise<void>;
   readonly shouldBlockSlashSubmit: (line: string) => boolean;
   readonly handleSubmit: (line: string) => Promise<void>;
   readonly hasSensitiveInput?: boolean;
@@ -255,6 +258,7 @@ export function useWorkShellInputController(input: {
         ? { selectedSlashCommand: input.selectedSlashCommand }
         : {}),
       isBusy: input.isBusy,
+      currentMode: input.currentMode,
       hasRequestSessionsView: Boolean(input.onRequestSessionsView),
       ...(input.hasSensitiveInput ? { hasSensitiveInput: input.hasSensitiveInput } : {}),
       ...(input.hasOverlayOpen ? { hasOverlayOpen: input.hasOverlayOpen } : {}),
@@ -271,6 +275,9 @@ export function useWorkShellInputController(input: {
         input.setSelectedSlashIndex((current) =>
           cycleWorkShellSlashSelection(current, input.slashSuggestionCount, action.direction),
         );
+        return;
+      case "cycle-mode":
+        void input.cycleMode(action.nextMode);
         return;
       case "cancel-sensitive-input":
         input.cancelSensitiveInput?.();
@@ -385,6 +392,13 @@ export function useWorkShellPaneState<
     [input.engine],
   );
 
+  const cycleMode = useCallback(
+    async (nextMode: string) => {
+      await input.engine.handleSubmit(`/mode set ${nextMode}`);
+    },
+    [input.engine],
+  );
+
   const { submit } = useWorkShellInputController({
     value: inputValue,
     replaceValue: setInputValue,
@@ -394,9 +408,11 @@ export function useWorkShellPaneState<
       : {}),
     setSelectedSlashIndex,
     isBusy: engineState.isBusy,
+    currentMode: engineState.mode,
     onExit: input.onExit,
     onRequestSessionsView: input.onRequestSessionsView,
     openEngineSessions,
+    cycleMode,
     shouldBlockSlashSubmit: input.shouldBlockSlashSubmit,
     handleSubmit,
     hasSensitiveInput: engineState.composerMode === "api-key-entry",

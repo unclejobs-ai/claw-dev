@@ -1,8 +1,13 @@
+const WORK_SHELL_MODE_CYCLE = ["default", "yolo", "ultrawork", "analyze", "search"] as const;
+
+type WorkShellCycleMode = (typeof WORK_SHELL_MODE_CYCLE)[number];
+
 export type WorkShellInputAction =
   | { readonly type: "none" }
   | { readonly type: "exit" }
   | { readonly type: "complete-slash"; readonly value: string }
   | { readonly type: "move-slash-selection"; readonly direction: "previous" | "next" }
+  | { readonly type: "cycle-mode"; readonly nextMode: WorkShellCycleMode }
   | { readonly type: "cancel-sensitive-input" }
   | { readonly type: "close-overlay" }
   | { readonly type: "open-sessions-view" }
@@ -17,11 +22,17 @@ function hasSlashSuggestions(input: string, slashSuggestionCount: number): boole
   return input.trim().startsWith("/") && slashSuggestionCount > 0;
 }
 
+function getNextWorkShellMode(currentMode: string | undefined): WorkShellCycleMode {
+  const currentIndex = currentMode ? WORK_SHELL_MODE_CYCLE.indexOf(currentMode as WorkShellCycleMode) : -1;
+  return WORK_SHELL_MODE_CYCLE[(currentIndex + 1 + WORK_SHELL_MODE_CYCLE.length) % WORK_SHELL_MODE_CYCLE.length] ?? "default";
+}
+
 export function resolveWorkShellInputAction(input: {
   readonly value: string;
   readonly key: {
     readonly ctrl?: boolean;
     readonly tab?: boolean;
+    readonly shift?: boolean;
     readonly upArrow?: boolean;
     readonly downArrow?: boolean;
     readonly escape?: boolean;
@@ -31,11 +42,19 @@ export function resolveWorkShellInputAction(input: {
   readonly selectedSlashCommand?: string;
   readonly isBusy: boolean;
   readonly hasRequestSessionsView: boolean;
+  readonly currentMode?: string;
   readonly hasSensitiveInput?: boolean;
   readonly hasOverlayOpen?: boolean;
 }): WorkShellInputAction {
   if (input.key.ctrl && input.value === "c") {
     return { type: "exit" };
+  }
+
+  if (input.key.tab && input.key.shift && !input.isBusy && !hasSlashSuggestions(input.input, input.slashSuggestionCount)) {
+    return {
+      type: "cycle-mode",
+      nextMode: getNextWorkShellMode(input.currentMode),
+    };
   }
 
   if (input.key.tab && hasSlashSuggestions(input.input, input.slashSuggestionCount)) {

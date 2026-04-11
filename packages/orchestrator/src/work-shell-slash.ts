@@ -1,3 +1,4 @@
+import { MODE_PROFILE_IDS } from "@unclecode/contracts";
 import { getProviderAdapter, type ProviderId } from "@unclecode/providers";
 
 import { createWorkShellCommandRegistry } from "./command-registry.js";
@@ -41,6 +42,11 @@ export function resolveWorkShellSlashCommand(
     return researchCommand;
   }
 
+  const modeCommand = resolveModeCommand(normalized);
+  if (modeCommand) {
+    return modeCommand;
+  }
+
   return undefined;
 }
 
@@ -58,6 +64,18 @@ export function getWorkShellSlashSuggestions(
     {
       command: "/auth key",
       description: "Open secure API key entry in this shell.",
+    },
+    {
+      command: "/queue",
+      description: "Show the current shell queue and active work state.",
+    },
+    {
+      command: "/skills",
+      description: "List available workspace skills.",
+    },
+    {
+      command: "/tools",
+      description: "List available local tools.",
     },
   ];
 
@@ -90,6 +108,10 @@ export function getWorkShellSlashSuggestions(
 
   if (normalized === "/model" || normalized.startsWith("/model ")) {
     return getModelSuggestions(normalized, entries, options);
+  }
+
+  if (normalized === "/mode" || normalized.startsWith("/mode ")) {
+    return getModeSuggestions(normalized, entries);
   }
 
   const scored = entries
@@ -206,4 +228,35 @@ function resolveResearchCommand(normalized: string): readonly string[] | undefin
   }
 
   return ["research", "run", ...tail.split(" ").filter((token) => token.length > 0)];
+}
+
+function getModeSuggestions(
+  normalized: string,
+  entries: readonly { readonly command: string; readonly description: string }[],
+): readonly { readonly command: string; readonly description: string }[] {
+  const dynamic = MODE_PROFILE_IDS.map((mode) => ({
+    command: `/mode set ${mode}`,
+    description: mode === "yolo" ? "Switch to YOLO mode." : `Switch to ${mode} mode.`,
+  }));
+  return [
+    ...entries.filter((entry) => entry.command === "/mode status"),
+    ...dynamic,
+  ].filter((entry) => entry.command.toLowerCase().startsWith(normalized));
+}
+
+function resolveModeCommand(normalized: string): readonly string[] | undefined {
+  if (normalized === "/mode") {
+    return ["mode", "status"];
+  }
+
+  if (normalized === "/mode status") {
+    return ["mode", "status"];
+  }
+
+  if (!normalized.startsWith("/mode set ")) {
+    return undefined;
+  }
+
+  const nextMode = normalized.slice("/mode set ".length).trim();
+  return nextMode.length > 0 ? ["mode", "set", nextMode] : undefined;
 }
