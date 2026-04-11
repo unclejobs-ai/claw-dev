@@ -2391,3 +2391,15 @@ test("resolveWorkerBudget returns correct budget per mode including yolo", async
   assert.equal(resolveWorkerBudget("search"), 3);
   assert.equal(resolveWorkerBudget("analyze"), 3);
 });
+
+test("resolveModeDefaultReasoning preserves unsupported and tags supported with mode-default source", async () => {
+  const { resolveModeDefaultReasoning } = await import("../../packages/orchestrator/src/work-shell-engine-state.ts");
+
+  const unsupported = { effort: "medium", support: { status: "unsupported" }, source: "user" };
+  assert.deepEqual(resolveModeDefaultReasoning(unsupported), unsupported);
+
+  const supported = { effort: "high", support: { status: "supported" }, source: "user" };
+  const result = resolveModeDefaultReasoning(supported);
+  assert.equal(result.effort, "high");
+  assert.equal(result.source, "mode-default");
+});

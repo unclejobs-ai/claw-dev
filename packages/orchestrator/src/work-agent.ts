@@ -43,13 +43,18 @@ function buildComplexTasks(prompt: string): readonly PlannedWorkTask[] {
   return [
     {
       id: "task-1",
-      summary: "Inspect current implementation and constraints",
-      prompt: `Inspect the current implementation and constraints for this request.\n\nOriginal request: ${prompt}`,
+      summary: "Investigate scope and current implementation",
+      prompt: `Read the relevant code to understand what exists today. Identify the files, functions, and types involved.\n\nRequest: ${prompt}`,
     },
     {
       id: "task-2",
-      summary: "Identify risks and edge cases",
-      prompt: `Identify the main risks, edge cases, and verification concerns for this request.\n\nOriginal request: ${prompt}`,
+      summary: "Plan changes and identify risks",
+      prompt: `Based on the codebase, outline what needs to change, what tests are needed, and what could break.\n\nRequest: ${prompt}`,
+    },
+    {
+      id: "task-3",
+      summary: "Verify constraints and edge cases",
+      prompt: `Check for edge cases, type safety concerns, and existing test coverage gaps related to this request.\n\nRequest: ${prompt}`,
     },
   ];
 }
