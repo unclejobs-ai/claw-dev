@@ -8,27 +8,29 @@ import {
 import type { SessionCenterSession } from "./dashboard-actions.js";
 import type { TuiShellHomeState, TuiShellState } from "./shell-state.js";
 
+export type TuiDashboardHomeState = {
+  readonly modeLabel: string;
+  readonly authLabel: string;
+  readonly sessionCount: number;
+  readonly mcpServerCount: number;
+  readonly mcpServers: readonly {
+    name: string;
+    transport: string;
+    scope: string;
+    trustTier: string;
+    originLabel: string;
+  }[];
+  readonly latestResearchSessionId: string | null;
+  readonly latestResearchSummary: string | null;
+  readonly latestResearchTimestamp: string | null;
+  readonly researchRunCount: number;
+  readonly sessions: readonly SessionCenterSession[];
+  readonly bridgeLines?: readonly string[];
+  readonly memoryLines?: readonly string[];
+};
+
 export type TuiRenderOptions<
-  HomeState extends {
-    readonly modeLabel: string;
-    readonly authLabel: string;
-    readonly sessionCount: number;
-    readonly mcpServerCount: number;
-    readonly mcpServers: readonly {
-      name: string;
-      transport: string;
-      scope: string;
-      trustTier: string;
-      originLabel: string;
-    }[];
-    readonly latestResearchSessionId: string | null;
-    readonly latestResearchSummary: string | null;
-    readonly latestResearchTimestamp: string | null;
-    readonly researchRunCount: number;
-    readonly sessions: readonly SessionCenterSession[];
-    readonly bridgeLines?: readonly string[];
-    readonly memoryLines?: readonly string[];
-  } = TuiShellHomeState
+  HomeState extends TuiDashboardHomeState = TuiShellHomeState
 > = {
   readonly workspaceRoot?: string;
   readonly modeLabel?: string;
@@ -58,26 +60,7 @@ export type TuiRenderOptions<
 };
 
 export type EmbeddedWorkDashboardSnapshot<
-  HomeState extends {
-    readonly modeLabel: string;
-    readonly authLabel: string;
-    readonly sessionCount: number;
-    readonly mcpServerCount: number;
-    readonly mcpServers: readonly {
-      name: string;
-      transport: string;
-      scope: string;
-      trustTier: string;
-      originLabel: string;
-    }[];
-    readonly latestResearchSessionId: string | null;
-    readonly latestResearchSummary: string | null;
-    readonly latestResearchTimestamp: string | null;
-    readonly researchRunCount: number;
-    readonly sessions: readonly SessionCenterSession[];
-    readonly bridgeLines?: readonly string[];
-    readonly memoryLines?: readonly string[];
-  } = TuiShellHomeState,
+  HomeState extends TuiDashboardHomeState = TuiShellHomeState,
 > = Pick<
   TuiRenderOptions<HomeState>,
   | "modeLabel"
@@ -97,52 +80,14 @@ export type EmbeddedWorkDashboardSnapshot<
 >;
 
 export type EmbeddedWorkPaneRenderOptions<
-  HomeState extends {
-    readonly modeLabel: string;
-    readonly authLabel: string;
-    readonly sessionCount: number;
-    readonly mcpServerCount: number;
-    readonly mcpServers: readonly {
-      name: string;
-      transport: string;
-      scope: string;
-      trustTier: string;
-      originLabel: string;
-    }[];
-    readonly latestResearchSessionId: string | null;
-    readonly latestResearchSummary: string | null;
-    readonly latestResearchTimestamp: string | null;
-    readonly researchRunCount: number;
-    readonly sessions: readonly SessionCenterSession[];
-    readonly bridgeLines?: readonly string[];
-    readonly memoryLines?: readonly string[];
-  } = TuiShellHomeState,
+  HomeState extends TuiDashboardHomeState = TuiShellHomeState,
 > = EmbeddedWorkDashboardSnapshot<HomeState> & Pick<
   TuiRenderOptions<HomeState>,
   "openEmbeddedWorkSession"
 >;
 
 export function extractEmbeddedHomeStatePatch<
-  HomeState extends {
-    readonly modeLabel: string;
-    readonly authLabel: string;
-    readonly sessionCount: number;
-    readonly mcpServerCount: number;
-    readonly mcpServers: readonly {
-      name: string;
-      transport: string;
-      scope: string;
-      trustTier: string;
-      originLabel: string;
-    }[];
-    readonly latestResearchSessionId: string | null;
-    readonly latestResearchSummary: string | null;
-    readonly latestResearchTimestamp: string | null;
-    readonly researchRunCount: number;
-    readonly sessions: readonly SessionCenterSession[];
-    readonly bridgeLines?: readonly string[];
-    readonly memoryLines?: readonly string[];
-  } = TuiShellHomeState,
+  HomeState extends TuiDashboardHomeState = TuiShellHomeState,
 >(props: EmbeddedWorkDashboardSnapshot<HomeState>): Partial<HomeState> {
   return {
     ...(props.modeLabel !== undefined ? { modeLabel: props.modeLabel } : {}),
@@ -173,26 +118,7 @@ export function extractEmbeddedHomeStatePatch<
 }
 
 export function buildEmbeddedWorkPaneRenderOptions<
-  HomeState extends {
-    readonly modeLabel: string;
-    readonly authLabel: string;
-    readonly sessionCount: number;
-    readonly mcpServerCount: number;
-    readonly mcpServers: readonly {
-      name: string;
-      transport: string;
-      scope: string;
-      trustTier: string;
-      originLabel: string;
-    }[];
-    readonly latestResearchSessionId: string | null;
-    readonly latestResearchSummary: string | null;
-    readonly latestResearchTimestamp: string | null;
-    readonly researchRunCount: number;
-    readonly sessions: readonly SessionCenterSession[];
-    readonly bridgeLines?: readonly string[];
-    readonly memoryLines?: readonly string[];
-  } = TuiShellHomeState,
+  HomeState extends TuiDashboardHomeState = TuiShellHomeState,
 >(input: {
   readonly homeStatePatch: Partial<HomeState>;
   readonly contextLines?: readonly string[];
@@ -245,26 +171,7 @@ export function buildEmbeddedWorkPaneRenderOptions<
 }
 
 export async function createEmbeddedWorkPaneController<
-  HomeState extends {
-    readonly modeLabel: string;
-    readonly authLabel: string;
-    readonly sessionCount: number;
-    readonly mcpServerCount: number;
-    readonly mcpServers: readonly {
-      name: string;
-      transport: string;
-      scope: string;
-      trustTier: string;
-      originLabel: string;
-    }[];
-    readonly latestResearchSessionId: string | null;
-    readonly latestResearchSummary: string | null;
-    readonly latestResearchTimestamp: string | null;
-    readonly researchRunCount: number;
-    readonly sessions: readonly SessionCenterSession[];
-    readonly bridgeLines?: readonly string[];
-    readonly memoryLines?: readonly string[];
-  } = TuiShellHomeState,
+  HomeState extends TuiDashboardHomeState = TuiShellHomeState,
 >(input: {
   readonly initialSelectedSessionId?: string;
   readonly loadSnapshot: (
@@ -319,26 +226,7 @@ export async function createEmbeddedWorkPaneController<
 }
 
 export function createSessionCenterDashboardRenderOptions<
-  HomeState extends {
-    readonly modeLabel: string;
-    readonly authLabel: string;
-    readonly sessionCount: number;
-    readonly mcpServerCount: number;
-    readonly mcpServers: readonly {
-      name: string;
-      transport: string;
-      scope: string;
-      trustTier: string;
-      originLabel: string;
-    }[];
-    readonly latestResearchSessionId: string | null;
-    readonly latestResearchSummary: string | null;
-    readonly latestResearchTimestamp: string | null;
-    readonly researchRunCount: number;
-    readonly sessions: readonly SessionCenterSession[];
-    readonly bridgeLines?: readonly string[];
-    readonly memoryLines?: readonly string[];
-  } = TuiShellHomeState,
+  HomeState extends TuiDashboardHomeState = TuiShellHomeState,
 >(input: {
   readonly workspaceRoot: string;
   readonly homeState: HomeState;
