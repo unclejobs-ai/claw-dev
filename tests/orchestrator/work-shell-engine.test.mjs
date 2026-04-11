@@ -1593,6 +1593,16 @@ test("work-shell trace helpers derive busy status, apply live updates, and map t
       line: "calling openai gpt-5.4",
     }),
     undefined,
+    "provider.calling is suppressed in minimal mode",
+  );
+  assert.deepEqual(
+    resolveVerboseTraceEntry({
+      traceMode: "minimal",
+      event: { type: "tool.started" },
+      line: "Reading src/index.ts",
+    }),
+    { role: "tool", text: "Reading src/index.ts" },
+    "tool.started shows in minimal mode as inline progress",
   );
   assert.equal(resolveTraceEntryRole({ type: "turn.started" }), "system");
   assert.equal(resolveTraceEntryRole({ type: "provider.calling" }), "tool");

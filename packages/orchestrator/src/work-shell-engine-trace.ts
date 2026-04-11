@@ -61,14 +61,25 @@ export function resolveVerboseTraceEntry(input: {
   event: { readonly type: string };
   line: string;
 }): WorkShellChatEntry | undefined {
-  if (input.traceMode !== "verbose" || !input.line) {
+  if (!input.line) {
     return undefined;
   }
 
-  return {
-    role: resolveTraceEntryRole(input.event),
-    text: input.line,
-  };
+  if (input.traceMode === "verbose") {
+    return {
+      role: resolveTraceEntryRole(input.event),
+      text: input.line,
+    };
+  }
+
+  if (input.event.type === "tool.started" || input.event.type === "tool.completed") {
+    return {
+      role: "tool",
+      text: input.line,
+    };
+  }
+
+  return undefined;
 }
 
 export function applyWorkShellTraceEvent<
