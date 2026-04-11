@@ -250,7 +250,7 @@ export function Composer(props: {
       if (suppressNextSubmitRef.current || isPasting) {
         return;
       }
-      void props.onSubmit(sanitizeComposerInput(result.nextValue));
+      void Promise.resolve(props.onSubmit(sanitizeComposerInput(result.nextValue))).catch(() => undefined);
       return;
     }
 
