@@ -67,6 +67,7 @@ export function StatusBar(props: {
   readonly approvalCount: number;
   readonly workerCount: number;
   readonly workflowStatus: string;
+  readonly ruleCount?: number;
 }) {
   return (
     <Box gap={2}>
@@ -76,6 +77,11 @@ export function StatusBar(props: {
       <Box>
         <Text color={props.authLabel === "none" ? C.textMuted : C.accentBright}>{props.authLabel}</Text>
       </Box>
+      {props.ruleCount !== undefined && props.ruleCount > 0 ? (
+        <Box>
+          <Text color={C.textMuted}>{props.ruleCount} rule{props.ruleCount > 1 ? "s" : ""}</Text>
+        </Box>
+      ) : null}
       {props.approvalCount > 0 ? (
         <Box>
           <Text backgroundColor={C.statusBgWarning} color={C.warning} bold>{" "}{props.approvalCount} approval{(props.approvalCount > 1 ? "s" : "")}{" "}</Text>
