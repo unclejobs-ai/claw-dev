@@ -10,9 +10,11 @@ import {
 } from "@unclecode/providers/openai-status";
 import { createRuntimeBroker } from "@unclecode/runtime-broker";
 import { createSessionStore } from "@unclecode/session-store";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import { inspectHarnessStatus } from "./harness.js";
 
 const DOCTOR_LATENCY_THRESHOLDS = {
   configMsBudget: 50,
@@ -116,6 +118,16 @@ export async function buildFastDoctorReportData(input: {
   const mcpLabel = `${mcpRegistry.entries.length} servers; transports ${MCP_HOST_SUPPORTED_TRANSPORTS.join(", ")}`;
   const totalMs = elapsedSince(totalStartedAt);
 
+  const harnessStatus = inspectHarnessStatus(input.workspaceRoot);
+  const harnessLabel = harnessStatus.exists
+    ? `${harnessStatus.model ?? "default"} · reasoning ${harnessStatus.reasoningEffort ?? "default"} · approvals ${harnessStatus.approvals ?? "user"}`
+    : "no .codex/config.toml";
+  const rulesDir = path.join(input.workspaceRoot, ".sisyphus", "rules");
+  const rulesCount = existsSync(rulesDir)
+    ? readdirSync(rulesDir).filter((f) => f.endsWith(".md")).length
+    : 0;
+  const rulesLabel = rulesCount > 0 ? `${rulesCount} rule${rulesCount > 1 ? "s" : ""} loaded` : "none";
+
   const lines = [
     "Doctor report",
     `Mode           PASS  ${modeLabel}`,
@@ -123,6 +135,8 @@ export async function buildFastDoctorReportData(input: {
     `Runtime        ${runtimeVerdict}  ${runtimeLabel}`,
     `Session store  PASS  ${sessionStoreRoot}`,
     `MCP host       PASS  ${mcpLabel}`,
+    `Harness        ${harnessStatus.exists ? "PASS" : "WARN"}  ${harnessLabel}`,
+    `Rules          ${rulesCount > 0 ? "PASS" : "INFO"}  ${rulesLabel}`,
     ...(input.verbose
       ? [
           "",
