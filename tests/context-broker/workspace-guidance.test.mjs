@@ -90,3 +90,30 @@ test("context-broker cached workspace guidance keeps project-skill context stabl
   const refreshed = await loadCachedWorkspaceGuidance({ cwd: nested });
   assert.match(refreshed.systemPromptAppendix, /Prefer tests first/);
 });
+
+test("context-broker loadWorkspaceGuidance discovers .sisyphus/rules/*.md as guidance sources", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "unclecode-guidance-rules-"));
+  mkdirSync(path.join(root, ".sisyphus", "rules"), { recursive: true });
+  writeFileSync(
+    path.join(root, ".sisyphus", "rules", "code-limits.md"),
+    "# Code Limits\nNo file may exceed 500 lines.\n",
+    "utf8",
+  );
+  writeFileSync(
+    path.join(root, "AGENTS.md"),
+    "# Agents\nFollow all rules.\n",
+    "utf8",
+  );
+
+  const guidance = await loadWorkspaceGuidance({ cwd: root });
+
+  assert.ok(
+    guidance.sources.includes(path.join(root, ".sisyphus", "rules", "code-limits.md")),
+    "rules file path appears in sources",
+  );
+  assert.match(guidance.systemPromptAppendix, /No file may exceed 500 lines/);
+  assert.ok(
+    guidance.contextSummaryLines.some((line) => line.includes("rules/code-limits.md")),
+    "rules file appears in context summary",
+  );
+});
