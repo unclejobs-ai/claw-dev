@@ -152,7 +152,7 @@ export function stripPermissionSeekingStallOutro(text: string): string {
 export function buildPermissionStallContinuePrompt(originalPrompt: string, previousAnswer: string): string {
   return [
     "Continue automatically without asking for permission.",
-    'Do not say "if you want", "if you\'d like", or "let me know".',
+    'Do not say "if you want", "if you\'d like", "let me know", "계속할까요", "진행할까요", or "원하시면".',
     "Perform the next concrete pass now and report the completed work plus verification.",
     `Original request: ${originalPrompt}`,
     previousAnswer ? `Previous partial answer:\n${previousAnswer}` : "",
