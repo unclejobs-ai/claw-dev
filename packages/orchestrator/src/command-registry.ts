@@ -168,6 +168,21 @@ export function createWorkShellCommandRegistry(extraEntries: readonly Registered
       metadata: builtinLocal("List merged MCP servers."),
     },
     {
+      command: "/mmbridge context",
+      routeTo: ["mmbridge", "context"],
+      metadata: builtinLocal("Assemble mmbridge context for the current workspace via MCP."),
+    },
+    {
+      command: "/mmbridge review",
+      routeTo: ["mmbridge", "review"],
+      metadata: builtinLocal("Run an mmbridge review for the current workspace via MCP."),
+    },
+    {
+      command: "/mmbridge gate",
+      routeTo: ["mmbridge", "gate"],
+      metadata: builtinLocal("Check mmbridge review freshness for the current workspace via MCP."),
+    },
+    {
       command: "/mode status",
       routeTo: ["mode", "status"],
       metadata: builtinLocal("Show the active mode and its source."),

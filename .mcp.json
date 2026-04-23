@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mmbridge": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./scripts/run-mmbridge-mcp.mjs"]
+    }
+  }
+}

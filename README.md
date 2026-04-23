@@ -22,6 +22,28 @@ UncleCode is designed to feel like one tool rather than a provider-specific wrap
 - compatibility-proxy mode
   - provides the broader OpenAI/Gemini/Groq/Copilot/z.ai/Ollama routing surfaces documented below
 
+## Project-local MCP integration
+
+UncleCode can merge MCP servers from:
+- user config: `~/.unclecode/mcp.json`
+- project config: `.mcp.json`
+
+This repo now includes a project-local `.mcp.json` entry for `mmbridge` so UncleCode can discover the mmbridge control plane over stdio.
+
+Useful checks:
+
+```bash
+node bin/unclecode.cjs mcp list
+node bin/unclecode.cjs doctor
+```
+
+The launcher script at `scripts/run-mmbridge-mcp.mjs` prefers:
+1. `MMBRIDGE_MCP_ENTRYPOINT`
+2. sibling repo build at `../mmbridge/packages/mcp/dist/index.js`
+3. global `mmbridge-mcp` on PATH
+
+This keeps local development stable without forcing a single brittle install path.
+
 ## Repository Layout
 
 - `Leonxlnx-claude-code/`

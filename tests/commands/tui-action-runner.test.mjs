@@ -699,3 +699,91 @@ test("createTuiActivityEntry formats action output into transcript-ready shape",
   assert.match(entry.timestamp, /^\d{4}-\d{2}-\d{2}T/);
   assert.deepEqual(entry.lines, ["Doctor report", "Runtime PASS local available"]);
 });
+
+test("runWorkShellInlineAction can execute mmbridge MCP actions from project config", async () => {
+  const cwd = makeTempWorkspace();
+
+  try {
+    const fakeServerPath = path.join(cwd, "fake-mmbridge-mcp.mjs");
+    writeFileSync(
+      fakeServerPath,
+      `
+import process from "node:process";
+
+let buffer = Buffer.alloc(0);
+function writeMessage(payload) {
+  const body = JSON.stringify(payload);
+  process.stdout.write(\`Content-Length: \${Buffer.byteLength(body, "utf8")}\\r\\n\\r\\n\${body}\`);
+}
+process.stdin.on("data", (chunk) => {
+  buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
+  while (true) {
+    const separator = buffer.indexOf("\\r\\n\\r\\n");
+    if (separator < 0) break;
+    const header = buffer.subarray(0, separator).toString("utf8");
+    const lengthLine = header.split("\\r\\n").find((line) => line.toLowerCase().startsWith("content-length:"));
+    if (!lengthLine) {
+      buffer = buffer.subarray(separator + 4);
+      continue;
+    }
+    const contentLength = Number.parseInt(lengthLine.split(":")[1]?.trim() ?? "0", 10);
+    const start = separator + 4;
+    const end = start + contentLength;
+    if (buffer.length < end) break;
+    const payload = JSON.parse(buffer.subarray(start, end).toString("utf8"));
+    buffer = buffer.subarray(end);
+    if (payload.method === "initialize") {
+      writeMessage({ jsonrpc: "2.0", id: payload.id, result: { protocolVersion: "2025-11-25", capabilities: { tools: {} }, serverInfo: { name: "fake-mmbridge", version: "0.0.0" } } });
+      continue;
+    }
+    if (payload.method === "tools/call") {
+      const name = payload.params?.name;
+      const lines = {
+        mmbridge_context_packet: "context packet ok\\nworkspace context ready",
+        mmbridge_review: "review ok\\n0 findings",
+        mmbridge_gate: "gate ok\\nstale-review: none",
+      };
+      writeMessage({ jsonrpc: "2.0", id: payload.id, result: { content: [{ type: "text", text: lines[name] ?? "unknown" }] } });
+    }
+  }
+});
+`,
+      "utf8",
+    );
+    writeFileSync(
+      path.join(cwd, ".mcp.json"),
+      JSON.stringify(
+        {
+          mcpServers: {
+            mmbridge: {
+              type: "stdio",
+              command: "node",
+              args: ["./fake-mmbridge-mcp.mjs"],
+            },
+          },
+        },
+        null,
+        2,
+      ),
+      "utf8",
+    );
+
+    const contextLines = await runWorkShellInlineAction({
+      args: ["mmbridge", "context"],
+      workspaceRoot: cwd,
+      env: process.env,
+    });
+    assert.match(contextLines.join("\n"), /mmbridge context ready/);
+    assert.match(contextLines.join("\n"), /workspace context ready/);
+
+    const gateLines = await runWorkShellInlineAction({
+      args: ["mmbridge", "gate"],
+      workspaceRoot: cwd,
+      env: process.env,
+    });
+    assert.match(gateLines.join("\n"), /mmbridge gate finished/);
+    assert.match(gateLines.join("\n"), /stale-review/);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});

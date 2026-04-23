@@ -122,6 +122,13 @@ export function elapsedSince(startedAt: number): number {
   return Math.max(0, Date.now() - startedAt);
 }
 
+import {
+  buildMmbridgeContextSummary,
+  buildMmbridgeGateReport,
+  buildMmbridgeReviewReport,
+  runMmbridgeMcpTool,
+} from "./mmbridge-mcp.js";
+
 const DOCTOR_LATENCY_THRESHOLDS = {
   configMsBudget: 100,
   authMsBudget: 50,
@@ -562,6 +569,9 @@ export function resolveWorkShellInlineActionId(args: readonly string[]): string 
   if (normalized === "mode status") return "mode-status";
   if (normalized === "research status") return "research-status";
   if (normalized === "research run" || normalized.startsWith("research run ")) return "new-research";
+  if (normalized === "mmbridge context") return "mmbridge-context";
+  if (normalized === "mmbridge review") return "mmbridge-review";
+  if (normalized === "mmbridge gate") return "mmbridge-gate";
   return undefined;
 }
 
@@ -790,6 +800,47 @@ export async function runTuiSessionCenterAction(input: {
         workspaceRoot: input.workspaceRoot,
         ...(input.userHomeDir ? { userHomeDir: input.userHomeDir } : {}),
       }).split("\n");
+    case "mmbridge-context": {
+      const lines = await runMmbridgeMcpTool({
+        workspaceRoot: input.workspaceRoot,
+        ...(input.userHomeDir ? { userHomeDir: input.userHomeDir } : {}),
+        ...(input.onProgress ? { onProgress: input.onProgress } : {}),
+        toolName: "mmbridge_context_packet",
+        args: {
+          task: "prepare workspace context for UncleCode",
+          command: "unclecode work",
+          projectDir: input.workspaceRoot,
+        },
+      });
+      return buildMmbridgeContextSummary(lines);
+    }
+    case "mmbridge-review": {
+      const lines = await runMmbridgeMcpTool({
+        workspaceRoot: input.workspaceRoot,
+        ...(input.userHomeDir ? { userHomeDir: input.userHomeDir } : {}),
+        ...(input.onProgress ? { onProgress: input.onProgress } : {}),
+        toolName: "mmbridge_review",
+        args: {
+          tool: input.env.MMBRIDGE_DEFAULT_TOOL?.trim() || "kimi",
+          mode: "review",
+          projectDir: input.workspaceRoot,
+        },
+      });
+      return buildMmbridgeReviewReport(lines);
+    }
+    case "mmbridge-gate": {
+      const lines = await runMmbridgeMcpTool({
+        workspaceRoot: input.workspaceRoot,
+        ...(input.userHomeDir ? { userHomeDir: input.userHomeDir } : {}),
+        ...(input.onProgress ? { onProgress: input.onProgress } : {}),
+        toolName: "mmbridge_gate",
+        args: {
+          mode: "review",
+          projectDir: input.workspaceRoot,
+        },
+      });
+      return buildMmbridgeGateReport(lines);
+    }
     case "mode-status":
       return formatModeStatusReport({
         workspaceRoot: input.workspaceRoot,
