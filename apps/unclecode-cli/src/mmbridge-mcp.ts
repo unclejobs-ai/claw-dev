@@ -63,17 +63,21 @@ function resolveMmbridgeServerConfig(input: {
   return entry.config;
 }
 
+const DEFAULT_MMBRIDGE_MCP_TIMEOUT_MS = 30_000;
+
 export async function runMmbridgeMcpTool(input: {
   workspaceRoot: string;
   toolName: "mmbridge_context_packet" | "mmbridge_review" | "mmbridge_gate";
   args: Record<string, unknown>;
   userHomeDir?: string;
   onProgress?: (line: string) => void;
+  timeoutMs?: number;
 }): Promise<readonly string[]> {
   const config = resolveMmbridgeServerConfig({
     workspaceRoot: input.workspaceRoot,
     ...(input.userHomeDir ? { userHomeDir: input.userHomeDir } : {}),
   });
+  const timeoutMs = input.timeoutMs ?? DEFAULT_MMBRIDGE_MCP_TIMEOUT_MS;
 
   const child = spawn(config.command, [...(config.args ?? [])], {
     cwd: input.workspaceRoot,
@@ -85,11 +89,37 @@ export async function runMmbridgeMcpTool(input: {
   const pending = new Map<number, { resolve: (value: JsonRpcResponse) => void; reject: (error: Error) => void }>();
   let stdoutBuffer = Buffer.alloc(0);
   let stderrText = "";
+  let timer: NodeJS.Timeout | null = null;
+
+  const failPending = (error: Error) => {
+    for (const entry of Array.from(pending.values())) {
+      entry.reject(error);
+    }
+    pending.clear();
+  };
+
+  const armTimeout = () => {
+    if (timer || timeoutMs <= 0) return;
+    timer = setTimeout(() => {
+      if (pending.size === 0) return;
+      failPending(new Error(`mmbridge MCP request timed out after ${timeoutMs}ms. ${stderrText}`.trim()));
+      child.kill("SIGTERM");
+    }, timeoutMs);
+    if (typeof timer.unref === "function") timer.unref();
+  };
+
+  const clearTimer = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
 
   const request = (method: string, params: Record<string, unknown> = {}) => {
     const id = nextId++;
     const payload: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
     child.stdin.write(encodeFrame(payload), "utf8");
+    armTimeout();
     return new Promise<JsonRpcResponse>((resolve, reject) => {
       pending.set(id, { resolve, reject });
     });
@@ -99,12 +129,7 @@ export async function runMmbridgeMcpTool(input: {
     child.stdin.write(encodeFrame({ jsonrpc: "2.0", method, params }), "utf8");
   };
 
-  const failPending = (error: Error) => {
-    for (const entry of Array.from(pending.values())) {
-      entry.reject(error);
-    }
-    pending.clear();
-  };
+  child.stdin.on("error", () => {});
 
   child.stderr.on("data", (chunk) => {
     stderrText += chunk.toString();
@@ -129,6 +154,7 @@ export async function runMmbridgeMcpTool(input: {
       if (typeof message.id === "number" && pending.has(message.id)) {
         const entry = pending.get(message.id);
         pending.delete(message.id);
+        if (pending.size === 0) clearTimer();
         if (message.error) {
           entry?.reject(new Error(message.error.message ?? `MCP ${message.method ?? "request"} failed`));
         } else {
@@ -145,7 +171,7 @@ export async function runMmbridgeMcpTool(input: {
   });
 
   child.on("error", (error) => failPending(error instanceof Error ? error : new Error(String(error))));
-  child.on("exit", (code) => {
+  child.on("close", (code) => {
     if (pending.size > 0) {
       failPending(new Error(`mmbridge MCP process exited early with code ${code ?? 0}. ${stderrText}`.trim()));
     }
@@ -164,6 +190,7 @@ export async function runMmbridgeMcpTool(input: {
     });
     return extractTextContent(response.result);
   } finally {
+    clearTimer();
     child.stdin.end();
     child.kill("SIGTERM");
   }

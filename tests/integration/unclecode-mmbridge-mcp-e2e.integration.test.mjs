@@ -81,8 +81,9 @@ async function callMmbridgeTool({ toolName, args }) {
     pending.clear();
   };
 
+  child.stdin.on("error", () => {});
   child.on("error", (error) => failPending(error));
-  child.on("exit", (code) => {
+  child.on("close", (code) => {
     if (pending.size > 0) {
       failPending(
         new Error(
@@ -91,6 +92,18 @@ async function callMmbridgeTool({ toolName, args }) {
       );
     }
   });
+
+  const timeoutMs = 20_000;
+  const timer = setTimeout(() => {
+    if (pending.size === 0) return;
+    failPending(
+      new Error(
+        `mmbridge MCP request timed out after ${timeoutMs}ms. stderr=${stderrText}`,
+      ),
+    );
+    child.kill("SIGTERM");
+  }, timeoutMs);
+  timer.unref();
 
   const request = (method, params = {}) => {
     const id = nextId++;
@@ -122,6 +135,7 @@ async function callMmbridgeTool({ toolName, args }) {
     });
     return { list: listResponse.result, call: callResponse.result, stderrText };
   } finally {
+    clearTimeout(timer);
     child.stdin.end();
     child.kill("SIGTERM");
   }
@@ -135,6 +149,7 @@ test(
     skip: hasMmbridgeBuild
       ? false
       : "mmbridge MCP dist not found; build mmbridge first",
+    timeout: 30_000,
   },
   async () => {
     const { list, call, stderrText } = await callMmbridgeTool({
@@ -162,12 +177,13 @@ test(
         (item) => item && item.type === "text" && typeof item.text === "string",
       )
       .map((item) => item.text);
-    assert.ok(
-      texts.length > 0,
-      `mmbridge_doctor returned no text content; stderr=${stderrText}`,
+    assert.equal(
+      texts.length,
+      1,
+      `mmbridge_doctor should return exactly one text block; stderr=${stderrText}`,
     );
 
-    const report = JSON.parse(texts.join("\n"));
+    const report = JSON.parse(texts[0]);
     assert.equal(typeof report.generatedAt, "string");
     assert.equal(typeof report.projectDir, "string");
     assert.ok(
@@ -175,6 +191,10 @@ test(
       "checks array missing in doctor report",
     );
     assert.equal(typeof report.mmbridgeHome, "string");
-    assert.equal(typeof report.sessionFileHints, "object");
+    assert.ok(
+      report.sessionFileHints !== null &&
+        typeof report.sessionFileHints === "object",
+      "sessionFileHints should be a non-null object",
+    );
   },
 );
