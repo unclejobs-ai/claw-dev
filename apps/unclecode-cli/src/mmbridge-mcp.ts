@@ -1,0 +1,206 @@
+import { loadMcpHostRegistry } from "@unclecode/mcp-host";
+import type { McpServerConfig } from "@unclecode/contracts";
+import { spawn } from "node:child_process";
+
+const MCP_PROTOCOL_VERSION = "2025-11-25";
+
+type JsonRpcRequest = {
+  readonly jsonrpc: "2.0";
+  readonly id?: number;
+  readonly method: string;
+  readonly params?: Record<string, unknown>;
+};
+
+type JsonRpcResponse = {
+  readonly jsonrpc?: string;
+  readonly id?: number;
+  readonly result?: Record<string, unknown>;
+  readonly error?: { code?: number; message?: string };
+  readonly method?: string;
+  readonly params?: Record<string, unknown>;
+};
+
+function encodeFrame(message: JsonRpcRequest): string {
+  const payload = JSON.stringify(message);
+  return `Content-Length: ${Buffer.byteLength(payload, "utf8")}\r\n\r\n${payload}`;
+}
+
+function extractTextContent(result: Record<string, unknown> | undefined): readonly string[] {
+  const content = Array.isArray(result?.content) ? result.content : [];
+  const lines: string[] = [];
+  for (const item of content) {
+    if (item && typeof item === "object" && "text" in item && typeof item.text === "string") {
+      lines.push(...item.text.split("\n"));
+    }
+  }
+  return lines.length > 0 ? lines : [JSON.stringify(result ?? {}, null, 2)];
+}
+
+function formatNotificationLine(message: JsonRpcResponse): string | null {
+  if (message.method !== "notifications/message") {
+    return null;
+  }
+  const params = message.params ?? {};
+  const level = typeof params.level === "string" ? params.level.toUpperCase() : "INFO";
+  const data = typeof params.data === "string" ? params.data : JSON.stringify(params.data ?? "");
+  return `[${level}] ${data}`;
+}
+
+function resolveMmbridgeServerConfig(input: {
+  workspaceRoot: string;
+  userHomeDir?: string;
+}): Extract<McpServerConfig, { type: "stdio" }> {
+  const registry = loadMcpHostRegistry({
+    workspaceRoot: input.workspaceRoot,
+    ...(input.userHomeDir ? { userHomeDir: input.userHomeDir } : {}),
+  });
+  const entry = registry.byName.get("mmbridge");
+  if (!entry) {
+    throw new Error("mmbridge MCP server is not configured. Add it to .mcp.json or ~/.unclecode/mcp.json.");
+  }
+  if (entry.config.type !== "stdio") {
+    throw new Error(`mmbridge MCP transport ${entry.config.type} is not supported yet. Use stdio.`);
+  }
+  return entry.config;
+}
+
+export async function runMmbridgeMcpTool(input: {
+  workspaceRoot: string;
+  toolName: "mmbridge_context_packet" | "mmbridge_review" | "mmbridge_gate";
+  args: Record<string, unknown>;
+  userHomeDir?: string;
+  onProgress?: (line: string) => void;
+}): Promise<readonly string[]> {
+  const config = resolveMmbridgeServerConfig({
+    workspaceRoot: input.workspaceRoot,
+    ...(input.userHomeDir ? { userHomeDir: input.userHomeDir } : {}),
+  });
+
+  const child = spawn(config.command, [...(config.args ?? [])], {
+    cwd: input.workspaceRoot,
+    env: { ...process.env, ...(config.env ?? {}) },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+
+  let nextId = 1;
+  const pending = new Map<number, { resolve: (value: JsonRpcResponse) => void; reject: (error: Error) => void }>();
+  let stdoutBuffer = Buffer.alloc(0);
+  let stderrText = "";
+
+  const request = (method: string, params: Record<string, unknown> = {}) => {
+    const id = nextId++;
+    const payload: JsonRpcRequest = { jsonrpc: "2.0", id, method, params };
+    child.stdin.write(encodeFrame(payload), "utf8");
+    return new Promise<JsonRpcResponse>((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+    });
+  };
+
+  const notify = (method: string, params: Record<string, unknown> = {}) => {
+    child.stdin.write(encodeFrame({ jsonrpc: "2.0", method, params }), "utf8");
+  };
+
+  const failPending = (error: Error) => {
+    for (const entry of Array.from(pending.values())) {
+      entry.reject(error);
+    }
+    pending.clear();
+  };
+
+  child.stderr.on("data", (chunk) => {
+    stderrText += chunk.toString();
+  });
+
+  child.stdout.on("data", (chunk) => {
+    stdoutBuffer = Buffer.concat([stdoutBuffer, Buffer.from(chunk)]);
+    while (true) {
+      const separator = stdoutBuffer.indexOf("\r\n\r\n");
+      if (separator < 0) return;
+      const headerText = stdoutBuffer.subarray(0, separator).toString("utf8");
+      const lengthLine = headerText
+        .split("\r\n")
+        .find((line) => line.toLowerCase().startsWith("content-length:"));
+      if (!lengthLine) {
+        stdoutBuffer = stdoutBuffer.subarray(separator + 4);
+        continue;
+      }
+      const contentLength = Number.parseInt(lengthLine.split(":")[1]?.trim() ?? "0", 10);
+      const frameStart = separator + 4;
+      const frameEnd = frameStart + contentLength;
+      if (stdoutBuffer.length < frameEnd) return;
+      const payload = stdoutBuffer.subarray(frameStart, frameEnd).toString("utf8");
+      stdoutBuffer = stdoutBuffer.subarray(frameEnd);
+
+      let message: JsonRpcResponse;
+      try {
+        message = JSON.parse(payload) as JsonRpcResponse;
+      } catch {
+        continue;
+      }
+
+      if (typeof message.id === "number" && pending.has(message.id)) {
+        const entry = pending.get(message.id);
+        pending.delete(message.id);
+        if (message.error) {
+          entry?.reject(new Error(message.error.message ?? `MCP ${message.method ?? "request"} failed`));
+        } else {
+          entry?.resolve(message);
+        }
+        continue;
+      }
+
+      const progressLine = formatNotificationLine(message);
+      if (progressLine) {
+        input.onProgress?.(progressLine);
+      }
+    }
+  });
+
+  child.on("error", (error) => failPending(error instanceof Error ? error : new Error(String(error))));
+  child.on("exit", (code) => {
+    if (pending.size > 0) {
+      failPending(new Error(`mmbridge MCP process exited early with code ${code ?? 0}. ${stderrText}`.trim()));
+    }
+  });
+
+  try {
+    await request("initialize", {
+      protocolVersion: MCP_PROTOCOL_VERSION,
+      capabilities: {},
+      clientInfo: { name: "unclecode", version: "0.1.0" },
+    });
+    notify("notifications/initialized", {});
+    const response = await request("tools/call", {
+      name: input.toolName,
+      arguments: input.args,
+    });
+    return extractTextContent(response.result);
+  } finally {
+    child.stdin.end();
+    child.kill("SIGTERM");
+  }
+}
+
+export function buildMmbridgeContextSummary(lines: readonly string[]): readonly string[] {
+  const joined = lines.join("\n");
+  return [
+    "mmbridge context ready.",
+    ...(joined ? joined.split("\n").slice(0, 8) : []),
+  ];
+}
+
+export function buildMmbridgeReviewReport(lines: readonly string[]): readonly string[] {
+  const joined = lines.join("\n");
+  return [
+    "mmbridge review finished.",
+    ...(joined ? joined.split("\n").slice(0, 12) : []),
+  ];
+}
+
+export function buildMmbridgeGateReport(lines: readonly string[]): readonly string[] {
+  const joined = lines.join("\n");
+  return [
+    "mmbridge gate finished.",
+    ...(joined ? joined.split("\n").slice(0, 10) : []),
+  ];
+}

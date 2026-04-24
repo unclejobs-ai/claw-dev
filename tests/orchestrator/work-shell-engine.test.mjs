@@ -1779,6 +1779,9 @@ test("createWorkShellPaneRuntime builds shared engine and slash runtime helpers"
   assert.equal(runtime.browserOAuthAvailable, true);
   assert.equal(runtime.engine.getState().authLabel, "api-key-env");
   assert.deepEqual(runtime.getSuggestions("/doctor").map((item) => item.command), ["/doctor"]);
+  assert.ok(runtime.getSuggestions("/mmbridge").some((item) => item.command === "/mmbridge context"));
+  assert.ok(runtime.getSuggestions("/mmbridge").some((item) => item.command === "/mmbridge review"));
+  assert.ok(runtime.getSuggestions("/mmbridge").some((item) => item.command === "/mmbridge gate"));
   assert.equal(runtime.shouldBlockSlashSubmit("/auth"), true);
 });
 

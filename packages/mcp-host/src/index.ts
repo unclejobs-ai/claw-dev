@@ -1,6 +1,7 @@
 import {
   MCP_TRANSPORTS,
   type McpConfigScope,
+  type McpServerConfig,
   type McpTransport,
   type ScopedMcpServerConfig,
 } from "@unclecode/contracts";
@@ -186,18 +187,42 @@ function toScopedConfig(
   return { ...config, scope } as ScopedMcpServerConfig;
 }
 
+function resolveConfigRelativePath(configDir: string, value: string): string {
+  if (path.isAbsolute(value) || !value.startsWith(".")) {
+    return value;
+  }
+  return path.resolve(configDir, value);
+}
+
+function normalizeConfigPaths(
+  configDir: string,
+  config: McpServerConfig,
+): McpServerConfig {
+  if (config.type !== "stdio") {
+    return config;
+  }
+
+  const resolvedArgs = config.args?.map((arg: string) => resolveConfigRelativePath(configDir, arg));
+  return {
+    ...config,
+    command: resolveConfigRelativePath(configDir, config.command),
+    ...(resolvedArgs ? { args: resolvedArgs } : {}),
+  };
+}
+
 function readMcpConfigFile(filePath: string, scope: McpConfigScope): Readonly<Record<string, ScopedMcpServerConfig>> {
   if (!existsSync(filePath)) {
     return {};
   }
 
+  const configDir = path.dirname(filePath);
   const raw = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
   const servers = isRecord(raw) && isRecord(raw.mcpServers) ? raw.mcpServers : {};
 
   return Object.fromEntries(
     Object.entries(servers).map(([name, config]) => [
       name,
-      toScopedConfig(config as Omit<ScopedMcpServerConfig, "scope">, scope),
+      toScopedConfig(normalizeConfigPaths(configDir, config as McpServerConfig), scope),
     ]),
   );
 }
