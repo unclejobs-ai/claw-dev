@@ -21,8 +21,7 @@ type JsonRpcResponse = {
 };
 
 function encodeFrame(message: JsonRpcRequest): string {
-  const payload = JSON.stringify(message);
-  return `Content-Length: ${Buffer.byteLength(payload, "utf8")}\r\n\r\n${payload}`;
+  return `${JSON.stringify(message)}\n`;
 }
 
 function extractTextContent(result: Record<string, unknown> | undefined): readonly string[] {
@@ -114,26 +113,15 @@ export async function runMmbridgeMcpTool(input: {
   child.stdout.on("data", (chunk) => {
     stdoutBuffer = Buffer.concat([stdoutBuffer, Buffer.from(chunk)]);
     while (true) {
-      const separator = stdoutBuffer.indexOf("\r\n\r\n");
-      if (separator < 0) return;
-      const headerText = stdoutBuffer.subarray(0, separator).toString("utf8");
-      const lengthLine = headerText
-        .split("\r\n")
-        .find((line) => line.toLowerCase().startsWith("content-length:"));
-      if (!lengthLine) {
-        stdoutBuffer = stdoutBuffer.subarray(separator + 4);
-        continue;
-      }
-      const contentLength = Number.parseInt(lengthLine.split(":")[1]?.trim() ?? "0", 10);
-      const frameStart = separator + 4;
-      const frameEnd = frameStart + contentLength;
-      if (stdoutBuffer.length < frameEnd) return;
-      const payload = stdoutBuffer.subarray(frameStart, frameEnd).toString("utf8");
-      stdoutBuffer = stdoutBuffer.subarray(frameEnd);
+      const newlineIndex = stdoutBuffer.indexOf(0x0a);
+      if (newlineIndex < 0) return;
+      const line = stdoutBuffer.subarray(0, newlineIndex).toString("utf8").replace(/\r$/, "");
+      stdoutBuffer = stdoutBuffer.subarray(newlineIndex + 1);
+      if (line.length === 0) continue;
 
       let message: JsonRpcResponse;
       try {
-        message = JSON.parse(payload) as JsonRpcResponse;
+        message = JSON.parse(line) as JsonRpcResponse;
       } catch {
         continue;
       }

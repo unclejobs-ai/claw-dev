@@ -712,26 +712,18 @@ import process from "node:process";
 
 let buffer = Buffer.alloc(0);
 function writeMessage(payload) {
-  const body = JSON.stringify(payload);
-  process.stdout.write(\`Content-Length: \${Buffer.byteLength(body, "utf8")}\\r\\n\\r\\n\${body}\`);
+  process.stdout.write(JSON.stringify(payload) + "\\n");
 }
 process.stdin.on("data", (chunk) => {
   buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
   while (true) {
-    const separator = buffer.indexOf("\\r\\n\\r\\n");
-    if (separator < 0) break;
-    const header = buffer.subarray(0, separator).toString("utf8");
-    const lengthLine = header.split("\\r\\n").find((line) => line.toLowerCase().startsWith("content-length:"));
-    if (!lengthLine) {
-      buffer = buffer.subarray(separator + 4);
-      continue;
-    }
-    const contentLength = Number.parseInt(lengthLine.split(":")[1]?.trim() ?? "0", 10);
-    const start = separator + 4;
-    const end = start + contentLength;
-    if (buffer.length < end) break;
-    const payload = JSON.parse(buffer.subarray(start, end).toString("utf8"));
-    buffer = buffer.subarray(end);
+    const newlineIndex = buffer.indexOf(0x0a);
+    if (newlineIndex < 0) break;
+    const line = buffer.subarray(0, newlineIndex).toString("utf8").replace(/\\r$/, "");
+    buffer = buffer.subarray(newlineIndex + 1);
+    if (line.length === 0) continue;
+    let payload;
+    try { payload = JSON.parse(line); } catch { continue; }
     if (payload.method === "initialize") {
       writeMessage({ jsonrpc: "2.0", id: payload.id, result: { protocolVersion: "2025-11-25", capabilities: { tools: {} }, serverInfo: { name: "fake-mmbridge", version: "0.0.0" } } });
       continue;
