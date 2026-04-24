@@ -92,7 +92,7 @@ export async function runMmbridgeMcpTool(input: {
   let timer: NodeJS.Timeout | null = null;
 
   const failPending = (error: Error) => {
-    for (const entry of Array.from(pending.values())) {
+    for (const entry of pending.values()) {
       entry.reject(error);
     }
     pending.clear();
@@ -137,7 +137,7 @@ export async function runMmbridgeMcpTool(input: {
   });
 
   child.stdout.on("data", (chunk) => {
-    stdoutBuffer = Buffer.concat([stdoutBuffer, Buffer.from(chunk)]);
+    stdoutBuffer = Buffer.concat([stdoutBuffer, chunk]);
     while (true) {
       const newlineIndex = stdoutBuffer.indexOf(0x0a);
       if (newlineIndex < 0) return;

@@ -46,7 +46,7 @@ async function callMmbridgeTool({ toolName, args }) {
   });
 
   child.stdout.on("data", (chunk) => {
-    stdoutBuffer = Buffer.concat([stdoutBuffer, Buffer.from(chunk)]);
+    stdoutBuffer = Buffer.concat([stdoutBuffer, chunk]);
     while (true) {
       const newlineIndex = stdoutBuffer.indexOf(0x0a);
       if (newlineIndex < 0) return;
@@ -93,6 +93,8 @@ async function callMmbridgeTool({ toolName, args }) {
     }
   });
 
+  // Inner watchdog fires before the outer node:test 30s timeout so a hang
+  // surfaces a diagnostic error (with server stderr) instead of a bare harness kill.
   const timeoutMs = 20_000;
   const timer = setTimeout(() => {
     if (pending.size === 0) return;

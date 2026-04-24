@@ -715,7 +715,7 @@ function writeMessage(payload) {
   process.stdout.write(JSON.stringify(payload) + "\\n");
 }
 process.stdin.on("data", (chunk) => {
-  buffer = Buffer.concat([buffer, Buffer.from(chunk)]);
+  buffer = Buffer.concat([buffer, chunk]);
   while (true) {
     const newlineIndex = buffer.indexOf(0x0a);
     if (newlineIndex < 0) break;
