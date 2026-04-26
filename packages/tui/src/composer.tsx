@@ -6,6 +6,7 @@ import { getDisplayWidth } from "./text-width.js";
 const COMPOSER_PASTE_THRESHOLD = 48;
 const PASTE_SETTLE_MS = 120;
 const BRACKETED_PASTE_ARTIFACT_PATTERN = /(?:\u001b\[(?:200|201|990)~|\[(?:200|201|990)~)/g;
+const COMPOSER_DEFAULT_VISIBLE_WIDTH = 72;
 
 export function sanitizeComposerInput(value: string): string {
   return value.replace(BRACKETED_PASTE_ARTIFACT_PATTERN, "");
@@ -156,27 +157,42 @@ function splitLineAtDisplayColumn(line: string, displayColumn: number): {
   return { before: line, atCursor: "", after: "" };
 }
 
+function padComposerLine(value: string, width: number): string {
+  const padding = Math.max(0, width - getDisplayWidth(value));
+  return `${value}${" ".repeat(padding)}`;
+}
+
+function getComposerVisibleWidth(): number {
+  const terminalColumns = process.stdout.columns ?? COMPOSER_DEFAULT_VISIBLE_WIDTH + 10;
+  return Math.max(12, Math.min(COMPOSER_DEFAULT_VISIBLE_WIDTH, terminalColumns - 10));
+}
+
 function renderComposerLine(line: string, cursorColumn: number | undefined): React.ReactNode {
+  const visibleWidth = getComposerVisibleWidth();
   if (cursorColumn === undefined) {
-    return <Text>{line.length > 0 ? line : " "}</Text>;
+    return <Text>{padComposerLine(line.length > 0 ? line : " ", visibleWidth)}</Text>;
   }
 
   const lineWidth = getDisplayWidth(line);
   if (cursorColumn >= lineWidth) {
+    const paddingWidth = Math.max(0, visibleWidth - lineWidth - 1);
     return (
       <Text>
         {line}
         <Text inverse> </Text>
+        {" ".repeat(paddingWidth)}
       </Text>
     );
   }
 
   const { before, atCursor, after } = splitLineAtDisplayColumn(line, cursorColumn);
+  const renderedWidth = getDisplayWidth(`${before}${atCursor}${after}`);
   return (
     <Text>
       {before}
       <Text inverse>{atCursor}</Text>
       {after}
+      {" ".repeat(Math.max(0, visibleWidth - renderedWidth))}
     </Text>
   );
 }

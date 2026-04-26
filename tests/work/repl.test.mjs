@@ -41,8 +41,10 @@ import {
   formatWorkShellBusyStatusLine,
   formatToolTraceLine,
   formatWorkShellError,
+  formatWorkShellFooterLine,
   formatWorkShellStatusLine,
   formatWorkShellThinkingLine,
+  getWorkShellEntryPresentation,
   getWorkShellConversationLayout as getConversationLayout,
   normalizeMarkdownDisplayText,
   refineInlineCommandPanelLines,
@@ -1161,6 +1163,11 @@ test("getConversationLayout gives answer blocks more room than lower-signal note
   assert.deepEqual(getConversationLayout("assistant"), { marginBottom: 1, paddingLeft: 2, hasBorder: false });
   assert.deepEqual(getConversationLayout("tool"), { marginBottom: 0, paddingLeft: 3, hasBorder: false });
   assert.deepEqual(getConversationLayout("system"), { marginBottom: 0, paddingLeft: 3, hasBorder: false });
+  const userPresentation = getWorkShellEntryPresentation("user");
+  const assistantPresentation = getWorkShellEntryPresentation("assistant");
+  assert.notEqual(userPresentation.label, assistantPresentation.label);
+  assert.notEqual(userPresentation.labelBackgroundColor, assistantPresentation.labelBackgroundColor);
+  assert.notEqual(userPresentation.bodyColor, assistantPresentation.bodyColor);
   assert.equal(formatWorkShellThinkingLine("high (mode-default)"), "Thinking · Deep thinking");
   assert.match(
     formatWorkShellStatusLine({
@@ -1170,6 +1177,18 @@ test("getConversationLayout gives answer blocks more room than lower-signal note
       authLabel: "Browser OAuth · file",
     }),
     /YOLO mode/,
+  );
+  assert.match(
+    formatWorkShellFooterLine({
+      cwd: "/Users/example/project/unclecode",
+      model: "gpt-5.4",
+      reasoningLabel: "medium (mode-default)",
+      mode: "yolo",
+      authLabel: "Browser OAuth · file",
+      composerHint: "Enter send",
+      width: 96,
+    }),
+    /gpt-5\.4 · YOLO mode · Saved OAuth/,
   );
 });
 

@@ -133,6 +133,7 @@ export function WorkShellPane<
       }
       inputValue={inputValue}
       slashSuggestionCount={slashSuggestionCount}
+      cwd={props.cwd}
       {...(isSecureApiKeyEntry
         ? { composerHintOverride: "Enter saves · Esc cancels" }
         : {})}

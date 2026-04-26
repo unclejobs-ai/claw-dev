@@ -1,6 +1,8 @@
 import { Box, Text } from "ink";
 import React from "react";
 
+import { getDisplayWidth, sliceByDisplayWidth } from "./text-width.js";
+
 export type WorkShellEntryRole = "user" | "assistant" | "tool" | "system";
 
 export type WorkShellEntry = {
@@ -17,6 +19,9 @@ export type WorkShellEntryPresentation = {
   readonly label: string;
   readonly badge: string;
   readonly labelColor: string;
+  readonly labelTextColor?: string;
+  readonly labelBackgroundColor?: string;
+  readonly railColor: string;
   readonly borderColor?: string;
   readonly bodyColor: string;
 };
@@ -28,8 +33,19 @@ const W = {
   border: "#44403c",
   borderStrong: "#57534e",
   user: "#7dd3fc",
+  userBody: "#e0f2fe",
+  userBadgeText: "#082f49",
+  userBadgeBg: "#38bdf8",
+  userSurface: "#2f3342",
   assistant: "#86efac",
+  assistantBody: "#dcfce7",
+  assistantBadgeText: "#052e16",
+  assistantBadgeBg: "#4ade80",
+  assistantMuted: "#9ca3af",
   tool: "#fbbf24",
+  toolSurface: "#18261d",
+  toolAccent: "#bef264",
+  toolMuted: "#8b978d",
   warning: "#facc15",
 } as const;
 
@@ -60,15 +76,33 @@ export function formatWorkShellProviderTitle(provider: string): string {
 
 export function getWorkShellEntryPresentation(role: WorkShellEntryRole): WorkShellEntryPresentation {
   if (role === "user") {
-    return { label: "You", badge: "›", labelColor: W.user, borderColor: W.user, bodyColor: W.text };
+    return {
+      label: "You",
+      badge: "›",
+      labelColor: W.user,
+      labelTextColor: W.userBadgeText,
+      labelBackgroundColor: W.userBadgeBg,
+      railColor: W.user,
+      borderColor: W.user,
+      bodyColor: W.userBody,
+    };
   }
   if (role === "assistant") {
-    return { label: "Assistant", badge: "✦", labelColor: W.assistant, borderColor: W.assistant, bodyColor: W.text };
+    return {
+      label: "UncleCode",
+      badge: "✦",
+      labelColor: W.assistant,
+      labelTextColor: W.assistantBadgeText,
+      labelBackgroundColor: W.assistantBadgeBg,
+      railColor: W.assistant,
+      borderColor: W.assistant,
+      bodyColor: W.assistantBody,
+    };
   }
   if (role === "tool") {
-    return { label: "Step", badge: "→", labelColor: W.tool, borderColor: W.borderStrong, bodyColor: W.text };
+    return { label: "Step", badge: "→", labelColor: W.tool, railColor: W.borderStrong, borderColor: W.borderStrong, bodyColor: W.text };
   }
-  return { label: "Status", badge: "·", labelColor: W.textMuted, borderColor: W.border, bodyColor: W.textMuted };
+  return { label: "Status", badge: "·", labelColor: W.textMuted, railColor: W.border, borderColor: W.border, bodyColor: W.textMuted };
 }
 
 export function getWorkShellConversationLayout(role: WorkShellEntryRole): {
@@ -401,12 +435,246 @@ function renderWorkShellPanelLine(line: string, index: number): React.ReactNode 
   return <Text key={`${index}-${line}`} color={W.text}>{line}</Text>;
 }
 
+function getWorkShellConversationWidth(input: {
+  readonly panelPlacement: "side" | "bottom";
+  readonly terminalColumns?: number;
+}): number {
+  const terminalColumns = input.terminalColumns ?? process.stdout.columns ?? 96;
+  const availableColumns = input.panelPlacement === "side"
+    ? Math.floor(terminalColumns * 0.62)
+    : terminalColumns - 6;
+  return Math.max(32, Math.min(availableColumns, 118));
+}
+
+function padDisplayLine(value: string, width: number): string {
+  const padding = Math.max(0, width - getDisplayWidth(value));
+  return `${value}${" ".repeat(padding)}`;
+}
+
+function truncateDisplayLine(value: string, width: number): string {
+  if (getDisplayWidth(value) <= width) {
+    return value;
+  }
+  if (width <= 1) {
+    return sliceByDisplayWidth(value, width);
+  }
+  return `${sliceByDisplayWidth(value, width - 1)}…`;
+}
+
+function getWorkShellDockWidth(terminalColumns?: number): number {
+  const columns = terminalColumns ?? process.stdout.columns ?? 96;
+  return Math.max(32, columns - 4);
+}
+
+function compactWorkShellPath(cwd?: string): string {
+  if (!cwd) {
+    return "";
+  }
+  const home = process.env.HOME;
+  const normalized = home && cwd.startsWith(home) ? `~${cwd.slice(home.length)}` : cwd;
+  const parts = normalized.split("/").filter(Boolean);
+  if (normalized.startsWith("~") && parts.length > 3) {
+    return `~/${parts.slice(-2).join("/")}`;
+  }
+  if (!normalized.startsWith("~") && parts.length > 3) {
+    return `…/${parts.slice(-2).join("/")}`;
+  }
+  return normalized;
+}
+
+export function formatWorkShellFooterLine(input: {
+  readonly cwd?: string;
+  readonly model: string;
+  readonly reasoningLabel: string;
+  readonly mode: string;
+  readonly authLabel: string;
+  readonly composerHint?: string;
+  readonly width?: number;
+}): string {
+  const statusLine = formatWorkShellStatusLine({
+    model: input.model,
+    reasoningLabel: input.reasoningLabel,
+    mode: input.mode,
+    authLabel: input.authLabel,
+  });
+  const footer = [
+    compactWorkShellPath(input.cwd),
+    statusLine,
+    input.composerHint,
+  ].filter((item): item is string => typeof item === "string" && item.length > 0).join("  ·  ");
+  return input.width ? truncateDisplayLine(footer, input.width) : footer;
+}
+
+function wrapDisplayLine(line: string, width: number): string[] {
+  if (width <= 0) {
+    return [line];
+  }
+  if (getDisplayWidth(line) <= width) {
+    return [line];
+  }
+
+  const output: string[] = [];
+  let remaining = line;
+  while (remaining.length > 0) {
+    const chunk = sliceByDisplayWidth(remaining, width);
+    if (chunk.length === 0) {
+      break;
+    }
+    output.push(chunk.trimEnd());
+    remaining = remaining.slice(chunk.length).trimStart();
+  }
+  return output.length > 0 ? output : [line];
+}
+
+function wrapDisplayText(value: string, width: number): string[] {
+  return value
+    .split("\n")
+    .flatMap((line) => line.length === 0 ? [""] : wrapDisplayLine(line, width));
+}
+
+function renderSurfaceText(input: {
+  readonly text: string;
+  readonly width: number;
+  readonly backgroundColor: string;
+  readonly color: string;
+  readonly keyPrefix: string;
+  readonly paddingX?: number;
+}): React.ReactNode {
+  const paddingX = input.paddingX ?? 2;
+  const innerWidth = Math.max(8, input.width - paddingX * 2);
+  const leftPadding = " ".repeat(paddingX);
+  const rightPadding = " ".repeat(paddingX);
+  const lines = wrapDisplayText(input.text, innerWidth);
+
+  return lines.map((line, index) => (
+    <Text
+      key={`${input.keyPrefix}-${String(index)}`}
+      backgroundColor={input.backgroundColor}
+      color={input.color}
+    >
+      {leftPadding}{padDisplayLine(line, innerWidth)}{rightPadding}
+    </Text>
+  ));
+}
+
+function renderWorkShellEntryBlock(input: {
+  readonly entry: WorkShellEntry;
+  readonly index: number;
+  readonly width: number;
+}): React.ReactNode {
+  const presentation = getWorkShellEntryPresentation(input.entry.role);
+  const bodyText = input.entry.role === "assistant"
+    ? normalizeMarkdownDisplayText(input.entry.text)
+    : input.entry.text;
+
+  if (input.entry.role === "user") {
+    return (
+      <Box
+        key={`${input.entry.role}-${input.index}`}
+        marginBottom={1}
+        flexDirection="column"
+      >
+        {renderSurfaceText({
+          text: bodyText,
+          width: input.width,
+          backgroundColor: W.userSurface,
+          color: presentation.bodyColor,
+          keyPrefix: `user-${String(input.index)}`,
+        })}
+      </Box>
+    );
+  }
+
+  if (input.entry.role === "assistant") {
+    return (
+      <Box
+        key={`${input.entry.role}-${input.index}`}
+        marginBottom={1}
+        paddingLeft={1}
+        flexDirection="column"
+      >
+        <Text bold color={W.assistantMuted}>{presentation.label}</Text>
+        <Box marginTop={1} paddingLeft={1} flexDirection="column">
+          {wrapDisplayText(bodyText, Math.max(20, input.width - 4)).map((line, lineIndex) => (
+            <Text key={`assistant-${String(input.index)}-${String(lineIndex)}`} color={presentation.bodyColor}>
+              {line}
+            </Text>
+          ))}
+        </Box>
+      </Box>
+    );
+  }
+
+  if (input.entry.role === "tool") {
+    return (
+      <Box
+        key={`${input.entry.role}-${input.index}`}
+        marginBottom={1}
+        flexDirection="column"
+      >
+        <Text backgroundColor={W.toolSurface} color={W.toolAccent} bold>
+          {padDisplayLine(` ${presentation.label.toLowerCase()} `, input.width)}
+        </Text>
+        {renderSurfaceText({
+          text: bodyText,
+          width: input.width,
+          backgroundColor: W.toolSurface,
+          color: W.text,
+          keyPrefix: `tool-${String(input.index)}`,
+        })}
+      </Box>
+    );
+  }
+
+  return (
+    <Box
+      key={`${input.entry.role}-${input.index}`}
+      marginBottom={0}
+      paddingLeft={3}
+      flexDirection="column"
+    >
+      <Text color={presentation.bodyColor}>{bodyText}</Text>
+    </Box>
+  );
+}
+
+function renderWorkShellThinkingBlock(input: {
+  readonly width: number;
+  readonly busyStatus?: string;
+  readonly reasoningLabel?: string;
+  readonly spinnerFrame: number;
+}): React.ReactNode {
+  const statusLine = formatWorkShellBusyStatusLine(input.busyStatus, input.spinnerFrame);
+  const detailLines = [
+    input.reasoningLabel
+      ? formatWorkShellThinkingLine(input.reasoningLabel).replace(/^Thinking · /, "Reasoning · ")
+      : undefined,
+    statusLine,
+  ].filter((line): line is string => typeof line === "string" && line.length > 0);
+
+  return (
+    <Box marginBottom={1} flexDirection="column">
+      <Text backgroundColor={W.border} color={W.assistantBody} bold>
+        {padDisplayLine(" thinking ", input.width)}
+      </Text>
+      {renderSurfaceText({
+        text: detailLines.join("\n"),
+        width: input.width,
+        backgroundColor: W.border,
+        color: W.assistantMuted,
+        keyPrefix: "thinking",
+      })}
+    </Box>
+  );
+}
+
 const WorkShellConversationBlock = React.memo(function WorkShellConversationBlock(props: {
   readonly entries: readonly WorkShellEntry[];
   readonly panelPlacement: "side" | "bottom";
   readonly isBusy: boolean;
   readonly busyStatus?: string;
   readonly reasoningLabel?: string;
+  readonly terminalColumns?: number;
 }) {
   const [spinnerFrame, setSpinnerFrame] = React.useState(0);
   React.useEffect(() => {
@@ -414,32 +682,27 @@ const WorkShellConversationBlock = React.memo(function WorkShellConversationBloc
     const interval = setInterval(() => setSpinnerFrame((f) => f + 1), 100);
     return () => clearInterval(interval);
   }, [props.isBusy]);
+  const conversationWidth = getWorkShellConversationWidth({
+    panelPlacement: props.panelPlacement,
+    ...(props.terminalColumns !== undefined ? { terminalColumns: props.terminalColumns } : {}),
+  });
 
   return (
     <Box flexDirection="column" width={props.panelPlacement === "side" ? "68%" : undefined} paddingRight={props.panelPlacement === "side" ? 1 : 0}>
       <Box flexDirection="column">
         {props.entries.length === 0 ? (
           <Text color={W.textMuted}>{getWorkShellEmptyConversationHint()}</Text>
-        ) : props.entries.slice(-12).map((entry, index) => {
-          const presentation = getWorkShellEntryPresentation(entry.role);
-          const layout = getWorkShellConversationLayout(entry.role);
-          return (
-            <Box
-              key={`${entry.role}-${index}`}
-              marginBottom={layout.marginBottom}
-              paddingLeft={layout.paddingLeft}
-              flexDirection="column"
-            >
-              <Text bold color={presentation.labelColor}>{`${presentation.badge} ${presentation.label}`}</Text>
-              <Text color={presentation.bodyColor}>{entry.role === "assistant" ? normalizeMarkdownDisplayText(entry.text) : entry.text}</Text>
-            </Box>
-          );
-        })}
-        {props.isBusy ? (
-          <Box paddingLeft={2} marginBottom={1}>
-            <Text color={W.textMuted}>{formatWorkShellBusyStatusLine(props.busyStatus ?? (props.reasoningLabel ? `Thinking · ${props.reasoningLabel}` : undefined), spinnerFrame)}</Text>
-          </Box>
-        ) : null}
+        ) : props.entries.slice(-12).map((entry, index) => renderWorkShellEntryBlock({
+          entry,
+          index,
+          width: conversationWidth,
+        }))}
+        {props.isBusy ? renderWorkShellThinkingBlock({
+          width: conversationWidth,
+          ...(props.busyStatus ? { busyStatus: props.busyStatus } : {}),
+          ...(props.reasoningLabel ? { reasoningLabel: props.reasoningLabel } : {}),
+          spinnerFrame,
+        }) : null}
       </Box>
     </Box>
   );
@@ -554,6 +817,43 @@ const WorkShellStatusBlock = React.memo(function WorkShellStatusBlock(props: {
   );
 });
 
+const WorkShellComposerDock = React.memo(function WorkShellComposerDock(props: {
+  readonly composer: React.ReactNode;
+  readonly composerHint?: string;
+  readonly inputValue: string;
+  readonly cwd?: string;
+  readonly model: string;
+  readonly reasoningLabel: string;
+  readonly mode: string;
+  readonly authLabel: string;
+  readonly terminalColumns?: number;
+}) {
+  const dockWidth = getWorkShellDockWidth(props.terminalColumns);
+  const accent = props.inputValue.trim().startsWith("/") ? W.user : W.borderStrong;
+  const footerLine = formatWorkShellFooterLine({
+    ...(props.cwd ? { cwd: props.cwd } : {}),
+    model: props.model,
+    reasoningLabel: props.reasoningLabel,
+    mode: props.mode,
+    authLabel: props.authLabel,
+    ...(props.composerHint ? { composerHint: props.composerHint } : {}),
+    width: dockWidth,
+  });
+
+  return (
+    <Box marginTop={1} flexDirection="column">
+      <Text color={accent}>{padDisplayLine("", dockWidth).replace(/ /g, "─")}</Text>
+      <Box minHeight={1} paddingLeft={1}>
+        <Text backgroundColor={accent} color={W.text}>{" "}</Text>
+        <Text color={W.textMuted}>{" "}</Text>
+        {props.composer}
+      </Box>
+      <Text color={W.border}>{padDisplayLine("", dockWidth).replace(/ /g, "─")}</Text>
+      <Text color={W.textDim}>{padDisplayLine(footerLine, dockWidth)}</Text>
+    </Box>
+  );
+});
+
 export function WorkShellView(props: {
   readonly provider: string;
   readonly model: string;
@@ -574,6 +874,7 @@ export function WorkShellView(props: {
   readonly headerHint?: string;
   readonly composerHintOverride?: string;
   readonly terminalColumns?: number;
+  readonly cwd?: string;
 }) {
   const composerHint = props.composerHintOverride ?? getWorkShellComposerHint(props.inputValue, props.slashSuggestionCount);
   const panelBorderColor = getWorkShellPanelBorderColor(props.inputValue, props.activePanel.title);
@@ -591,6 +892,7 @@ export function WorkShellView(props: {
       isBusy={props.isBusy}
       {...(props.busyStatus ? { busyStatus: props.busyStatus } : {})}
       {...(props.reasoningLabel ? { reasoningLabel: props.reasoningLabel } : {})}
+      {...(props.terminalColumns !== undefined ? { terminalColumns: props.terminalColumns } : {})}
     />
   );
 
@@ -632,13 +934,17 @@ export function WorkShellView(props: {
           {conversation}
         </Box>
       )}
-      <Box marginTop={1} borderStyle="single" borderColor={props.inputValue.trim().startsWith("/") ? W.borderStrong : W.border} paddingX={1}>
-        <Text color={W.textMuted}>{"> "}</Text>
-        {props.composer}
-      </Box>
-      <Box minHeight={getWorkShellComposerHintMinHeight()} flexDirection="column">
-        <Text color={W.textDim}>{composerHint ?? " "}</Text>
-      </Box>
+      <WorkShellComposerDock
+        composer={props.composer}
+        {...(composerHint ? { composerHint } : {})}
+        inputValue={props.inputValue}
+        {...(props.cwd ? { cwd: props.cwd } : {})}
+        model={props.model}
+        reasoningLabel={props.reasoningLabel}
+        mode={props.mode}
+        authLabel={props.authLabel}
+        {...(props.terminalColumns !== undefined ? { terminalColumns: props.terminalColumns } : {})}
+      />
       {props.attachmentLines
         ? <WorkShellAttachmentBlock attachmentLines={props.attachmentLines} />
         : null}

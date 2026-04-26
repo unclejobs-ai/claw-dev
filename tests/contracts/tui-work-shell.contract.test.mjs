@@ -149,20 +149,27 @@ test("getWorkShellEntryPresentation keeps user, assistant, tool, and system role
     label: "You",
     badge: "›",
     labelColor: "#7dd3fc",
+    labelTextColor: "#082f49",
+    labelBackgroundColor: "#38bdf8",
+    railColor: "#7dd3fc",
     borderColor: "#7dd3fc",
-    bodyColor: "#e7e5e4",
+    bodyColor: "#e0f2fe",
   });
   assert.deepEqual(getWorkShellEntryPresentation("assistant"), {
-    label: "Assistant",
+    label: "UncleCode",
     badge: "✦",
     labelColor: "#86efac",
+    labelTextColor: "#052e16",
+    labelBackgroundColor: "#4ade80",
+    railColor: "#86efac",
     borderColor: "#86efac",
-    bodyColor: "#e7e5e4",
+    bodyColor: "#dcfce7",
   });
   assert.deepEqual(getWorkShellEntryPresentation("tool"), {
     label: "Step",
     badge: "→",
     labelColor: "#fbbf24",
+    railColor: "#57534e",
     borderColor: "#57534e",
     bodyColor: "#e7e5e4",
   });
@@ -170,6 +177,7 @@ test("getWorkShellEntryPresentation keeps user, assistant, tool, and system role
     label: "Status",
     badge: "·",
     labelColor: "#a8a29e",
+    railColor: "#44403c",
     borderColor: "#44403c",
     bodyColor: "#a8a29e",
   });
