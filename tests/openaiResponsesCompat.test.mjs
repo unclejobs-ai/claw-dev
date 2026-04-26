@@ -146,3 +146,41 @@ test("sliceResponsesInputToLatestToolTurn keeps the latest tool loop intact", ()
     { type: "function_call_output", call_id: "call-new", output: [{ type: "input_text", text: "Sunny, 19C" }] },
   ]);
 });
+
+test("sliceResponsesInputToLatestToolTurn keeps all matching calls for trailing outputs", () => {
+  const input = [
+    { type: "message", role: "user", content: [{ type: "input_text", text: "Question" }] },
+    { type: "function_call", call_id: "call-a", name: "search", arguments: "{\"q\":\"a\"}" },
+    { type: "function_call", call_id: "call-b", name: "search", arguments: "{\"q\":\"b\"}" },
+    { type: "function_call_output", call_id: "call-a", output: [{ type: "input_text", text: "a result" }] },
+    { type: "function_call_output", call_id: "call-b", output: [{ type: "input_text", text: "b result" }] },
+  ];
+
+  assert.deepEqual(sliceResponsesInputToLatestToolTurn(input), input);
+});
+
+test("sliceResponsesInputToLatestToolTurn drops dangling calls before sending Responses input", () => {
+  const input = [
+    { type: "message", role: "user", content: [{ type: "input_text", text: "Question" }] },
+    { type: "function_call", call_id: "call-complete", name: "search", arguments: "{}" },
+    { type: "function_call", call_id: "call-dangling", name: "search", arguments: "{}" },
+    { type: "function_call_output", call_id: "call-complete", output: [{ type: "input_text", text: "done" }] },
+  ];
+
+  assert.deepEqual(sliceResponsesInputToLatestToolTurn(input), [
+    { type: "message", role: "user", content: [{ type: "input_text", text: "Question" }] },
+    { type: "function_call", call_id: "call-complete", name: "search", arguments: "{}" },
+    { type: "function_call_output", call_id: "call-complete", output: [{ type: "input_text", text: "done" }] },
+  ]);
+});
+
+test("sliceResponsesInputToLatestToolTurn drops orphaned outputs after an interrupted turn", () => {
+  const input = [
+    { type: "message", role: "user", content: [{ type: "input_text", text: "New prompt" }] },
+    { type: "function_call_output", call_id: "call-orphaned", output: [{ type: "input_text", text: "late output" }] },
+  ];
+
+  assert.deepEqual(sliceResponsesInputToLatestToolTurn(input), [
+    { type: "message", role: "user", content: [{ type: "input_text", text: "New prompt" }] },
+  ]);
+});

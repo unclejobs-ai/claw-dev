@@ -925,7 +925,7 @@ function sliceResponsesInputToLatestToolTurn(input: Array<Record<string, unknown
   }
 
   if (trailingOutputStart === -1) {
-    return input;
+    return removeUnpairedResponsesToolItems(input);
   }
 
   const trailingCallIds = new Set(
@@ -934,6 +934,7 @@ function sliceResponsesInputToLatestToolTurn(input: Array<Record<string, unknown
       .filter((item) => isRecord(item) && item.type === "function_call_output" && typeof item.call_id === "string")
       .map((item) => String(item.call_id)),
   );
+  const remainingCallIds = new Set(trailingCallIds);
 
   let startIndex = trailingOutputStart;
   for (let index = trailingOutputStart - 1; index >= 0; index -= 1) {
@@ -943,15 +944,52 @@ function sliceResponsesInputToLatestToolTurn(input: Array<Record<string, unknown
     }
     if (item.type === "function_call" && typeof item.call_id === "string" && trailingCallIds.has(item.call_id)) {
       startIndex = index;
+      remainingCallIds.delete(item.call_id);
       continue;
     }
-    if (item.type === "message") {
+    if (item.type === "message" && remainingCallIds.size === 0) {
       startIndex = index;
       break;
     }
   }
 
-  return input.slice(startIndex);
+  if (remainingCallIds.size > 0) {
+    for (let index = trailingOutputStart - 1; index >= 0; index -= 1) {
+      const item = input[index];
+      if (isRecord(item) && item.type === "message") {
+        startIndex = index;
+        break;
+      }
+    }
+  }
+
+  return removeUnpairedResponsesToolItems(input.slice(startIndex));
+}
+
+function removeUnpairedResponsesToolItems(input: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  const callIds = new Set(
+    input
+      .filter((item) => isRecord(item) && item.type === "function_call" && typeof item.call_id === "string")
+      .map((item) => String(item.call_id)),
+  );
+  const outputIds = new Set(
+    input
+      .filter((item) => isRecord(item) && item.type === "function_call_output" && typeof item.call_id === "string")
+      .map((item) => String(item.call_id)),
+  );
+
+  return input.filter((item) => {
+    if (!isRecord(item)) {
+      return true;
+    }
+    if (item.type === "function_call" && typeof item.call_id === "string") {
+      return outputIds.has(item.call_id);
+    }
+    if (item.type === "function_call_output" && typeof item.call_id === "string") {
+      return callIds.has(item.call_id);
+    }
+    return true;
+  });
 }
 
 function parseResponsesSseToResult(sseText: string): {

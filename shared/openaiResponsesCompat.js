@@ -111,7 +111,7 @@ export function sliceResponsesInputToLatestToolTurn(input) {
   }
 
   if (trailingOutputStart === -1) {
-    return items;
+    return removeUnpairedResponsesToolItems(items);
   }
 
   const trailingCallIds = new Set(
@@ -120,6 +120,7 @@ export function sliceResponsesInputToLatestToolTurn(input) {
       .filter((item) => isRecord(item) && item.type === "function_call_output" && typeof item.call_id === "string")
       .map((item) => item.call_id),
   );
+  const remainingCallIds = new Set(trailingCallIds);
 
   let startIndex = trailingOutputStart;
   for (let index = trailingOutputStart - 1; index >= 0; index -= 1) {
@@ -130,16 +131,53 @@ export function sliceResponsesInputToLatestToolTurn(input) {
 
     if (item.type === "function_call" && typeof item.call_id === "string" && trailingCallIds.has(item.call_id)) {
       startIndex = index;
+      remainingCallIds.delete(item.call_id);
       continue;
     }
 
-    if (item.type === "message") {
+    if (item.type === "message" && remainingCallIds.size === 0) {
       startIndex = index;
       break;
     }
   }
 
-  return items.slice(startIndex);
+  if (remainingCallIds.size > 0) {
+    for (let index = trailingOutputStart - 1; index >= 0; index -= 1) {
+      const item = items[index];
+      if (isRecord(item) && item.type === "message") {
+        startIndex = index;
+        break;
+      }
+    }
+  }
+
+  return removeUnpairedResponsesToolItems(items.slice(startIndex));
+}
+
+function removeUnpairedResponsesToolItems(items) {
+  const callIds = new Set(
+    items
+      .filter((item) => isRecord(item) && item.type === "function_call" && typeof item.call_id === "string")
+      .map((item) => item.call_id),
+  );
+  const outputIds = new Set(
+    items
+      .filter((item) => isRecord(item) && item.type === "function_call_output" && typeof item.call_id === "string")
+      .map((item) => item.call_id),
+  );
+
+  return items.filter((item) => {
+    if (!isRecord(item)) {
+      return true;
+    }
+    if (item.type === "function_call" && typeof item.call_id === "string") {
+      return outputIds.has(item.call_id);
+    }
+    if (item.type === "function_call_output" && typeof item.call_id === "string") {
+      return callIds.has(item.call_id);
+    }
+    return true;
+  });
 }
 
 export function openAICompatibleToolsToResponsesTools(tools) {
