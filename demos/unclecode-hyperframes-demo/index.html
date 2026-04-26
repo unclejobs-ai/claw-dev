@@ -1,0 +1,638 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UncleCode Demo - Hyperframes</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f3f4f1;
+        color: #141414;
+        font-family: "Montserrat", Arial, sans-serif;
+      }
+
+      #unclecode-demo {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f3f4f1;
+      }
+
+      .scene {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: #f3f4f1;
+      }
+
+      .scene:not(#scene-1) {
+        visibility: hidden;
+      }
+
+      .grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(20, 20, 20, 0.055) 1px, rgba(20, 20, 20, 0) 1px),
+          linear-gradient(90deg, rgba(20, 20, 20, 0.055) 1px, rgba(20, 20, 20, 0) 1px);
+        background-size: 80px 80px;
+      }
+
+      .grid-strong {
+        background-size: 160px 160px;
+        opacity: 0.75;
+      }
+
+      .content {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+        box-sizing: border-box;
+        padding: 104px 132px;
+        gap: 30px;
+      }
+
+      .row {
+        display: flex;
+        align-items: stretch;
+        justify-content: space-between;
+        gap: 56px;
+        width: 100%;
+      }
+
+      .kicker {
+        width: fit-content;
+        padding: 10px 0;
+        border-top: 4px solid #0057ff;
+        border-bottom: 4px solid #0057ff;
+        color: #0057ff;
+        font-family: "IBM Plex Mono", "Courier New", monospace;
+        font-size: 28px;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      h1,
+      h2 {
+        margin: 0;
+        color: #141414;
+        font-weight: 900;
+        line-height: 0.9;
+        letter-spacing: 0;
+      }
+
+      h1 {
+        max-width: 1180px;
+        font-size: 144px;
+      }
+
+      h2 {
+        max-width: 1040px;
+        font-size: 112px;
+      }
+
+      .subtitle {
+        max-width: 900px;
+        margin: 0;
+        color: #303337;
+        font-size: 38px;
+        font-weight: 360;
+        line-height: 1.16;
+        letter-spacing: 0;
+      }
+
+      .mono {
+        font-family: "IBM Plex Mono", "Courier New", monospace;
+        letter-spacing: 0;
+      }
+
+      .terminal {
+        width: 720px;
+        min-height: 480px;
+        border: 4px solid #141414;
+        background: #141414;
+        color: #f3f4f1;
+        box-shadow: 18px 18px 0 #0057ff;
+      }
+
+      .terminal-bar {
+        display: flex;
+        align-items: center;
+        height: 58px;
+        padding: 0 22px;
+        border-bottom: 3px solid #f3f4f1;
+        color: #f3f4f1;
+        font-family: "IBM Plex Mono", "Courier New", monospace;
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .terminal-body {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        padding: 34px;
+        font-family: "IBM Plex Mono", "Courier New", monospace;
+        font-size: 29px;
+        line-height: 1.35;
+      }
+
+      .prompt {
+        color: #00a86b;
+      }
+
+      .command {
+        color: #f3f4f1;
+      }
+
+      .muted {
+        color: #bbc2c8;
+      }
+
+      .blue {
+        color: #0057ff;
+      }
+
+      .coral {
+        color: #f04f3a;
+      }
+
+      .green {
+        color: #00a86b;
+      }
+
+      .provider-strip {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 16px;
+        max-width: 1420px;
+      }
+
+      .provider {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 112px;
+        border: 3px solid #141414;
+        background: #f3f4f1;
+        font-size: 30px;
+        font-weight: 900;
+        text-align: center;
+      }
+
+      .provider.hot {
+        background: #0057ff;
+        color: #141414;
+      }
+
+      .metric-row {
+        display: grid;
+        grid-template-columns: 0.85fr 1.15fr;
+        gap: 48px;
+        width: 100%;
+      }
+
+      .metric {
+        border-top: 6px solid #141414;
+        padding-top: 26px;
+      }
+
+      .metric-value {
+        display: block;
+        font-family: "IBM Plex Mono", "Courier New", monospace;
+        font-size: 132px;
+        font-weight: 800;
+        line-height: 0.95;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .metric-label {
+        display: block;
+        max-width: 560px;
+        margin-top: 16px;
+        color: #303337;
+        font-size: 34px;
+        line-height: 1.18;
+      }
+
+      .dashboard {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 26px;
+        width: 810px;
+      }
+
+      .pane {
+        min-height: 198px;
+        border: 3px solid #141414;
+        background: #ffffff;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+
+      .pane.wide {
+        grid-column: 1 / span 2;
+      }
+
+      .pane-title {
+        margin: 0 0 18px;
+        font-family: "IBM Plex Mono", "Courier New", monospace;
+        font-size: 24px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .pane-copy {
+        margin: 0;
+        color: #303337;
+        font-size: 28px;
+        line-height: 1.15;
+      }
+
+      .trace-list {
+        display: grid;
+        gap: 14px;
+        padding: 0;
+        margin: 0;
+        list-style: none;
+      }
+
+      .trace-list li {
+        display: grid;
+        grid-template-columns: 134px 1fr 86px;
+        align-items: center;
+        gap: 18px;
+        font-family: "IBM Plex Mono", "Courier New", monospace;
+        font-size: 24px;
+      }
+
+      .status {
+        padding: 8px 0;
+        color: #006642;
+        text-align: center;
+        font-weight: 800;
+      }
+
+      .status.wait {
+        color: #0057ff;
+      }
+
+      .mode-stack {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+        width: 100%;
+      }
+
+      .mode {
+        min-height: 216px;
+        border: 4px solid #141414;
+        background: #ffffff;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+
+      .mode-number {
+        display: block;
+        font-family: "IBM Plex Mono", "Courier New", monospace;
+        font-size: 30px;
+        font-weight: 900;
+        color: #0057ff;
+      }
+
+      .mode-name {
+        display: block;
+        margin-top: 24px;
+        font-size: 46px;
+        font-weight: 900;
+        line-height: 1;
+      }
+
+      .mode-copy {
+        display: block;
+        margin-top: 16px;
+        color: #303337;
+        font-size: 25px;
+        line-height: 1.14;
+      }
+
+      .final-lockup {
+        display: grid;
+        grid-template-columns: 1.05fr 0.95fr;
+        gap: 72px;
+        align-items: center;
+        width: 100%;
+      }
+
+      .command-list {
+        display: grid;
+        gap: 18px;
+      }
+
+      .command-line {
+        border-left: 10px solid #0057ff;
+        border-top: 3px solid #141414;
+        border-bottom: 3px solid #141414;
+        background: #f3f4f1;
+        color: #141414;
+        padding: 24px 28px;
+        font-family: "IBM Plex Mono", "Courier New", monospace;
+        font-size: 33px;
+        font-weight: 700;
+      }
+
+      .scanline {
+        position: absolute;
+        left: -20%;
+        top: 0;
+        z-index: 1;
+        width: 32%;
+        height: 100%;
+        background: rgba(0, 87, 255, 0.14);
+        transform: skewX(-13deg);
+      }
+
+      .block-transition {
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        pointer-events: none;
+      }
+
+      .block-transition span {
+        transform: scaleY(0);
+        transform-origin: bottom;
+        background: #141414;
+      }
+
+      .blue-transition span {
+        background: #0057ff;
+      }
+
+      .white-flash {
+        position: absolute;
+        inset: 0;
+        z-index: 21;
+        opacity: 0;
+        background: #f3f4f1;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="unclecode-demo"
+      data-composition-id="unclecode-demo"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="18"
+    >
+      <section id="scene-1" class="scene clip" data-start="0" data-duration="3.6" data-track-index="1">
+        <div class="grid grid-strong"></div>
+        <div class="scanline" id="scan-1"></div>
+        <div class="content">
+          <span class="kicker" id="s1-kicker">local coding shell</span>
+          <div class="row">
+            <div>
+              <h1 id="s1-title">UncleCode turns provider sprawl into one workbench.</h1>
+              <p class="subtitle" id="s1-copy">
+                Pick a model, start the TUI, and keep the agent loop inside your repo.
+              </p>
+            </div>
+            <div class="terminal" id="s1-terminal">
+              <div class="terminal-bar">unclecode</div>
+              <div class="terminal-body">
+                <div><span class="prompt">$</span> <span class="command">npm run unclecode</span></div>
+                <div class="muted">provider selector</div>
+                <div class="blue">OpenAI · Anthropic · Gemini</div>
+                <div class="muted">work shell ready</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="scene-2" class="scene clip" data-start="3.6" data-duration="3.6" data-track-index="1">
+        <div class="grid"></div>
+        <div class="content">
+          <span class="kicker" id="s2-kicker">route at startup</span>
+          <h2 id="s2-title">Seven providers. One command surface.</h2>
+          <div class="provider-strip" id="s2-providers">
+            <div class="provider hot">OpenAI</div>
+            <div class="provider">Anthropic</div>
+            <div class="provider">Gemini</div>
+            <div class="provider">Groq</div>
+            <div class="provider">Copilot</div>
+            <div class="provider">z.ai</div>
+            <div class="provider">Ollama</div>
+          </div>
+          <p class="subtitle" id="s2-copy">
+            UncleCode resolves auth, proxy routing, and model choice before the first turn.
+          </p>
+        </div>
+      </section>
+
+      <section id="scene-3" class="scene clip" data-start="7.2" data-duration="3.7" data-track-index="1">
+        <div class="grid grid-strong"></div>
+        <div class="content">
+          <span class="kicker" id="s3-kicker">work-first TUI</span>
+          <div class="row">
+            <div>
+              <h2 id="s3-title">The session opens where work happens.</h2>
+              <p class="subtitle" id="s3-copy">
+                A dashboard, shell, slash commands, and trace events live together so the loop stays visible.
+              </p>
+            </div>
+            <div class="dashboard" id="s3-dashboard">
+              <div class="pane">
+                <p class="pane-title">mode</p>
+                <p class="pane-copy">work shell</p>
+              </div>
+              <div class="pane">
+                <p class="pane-title">provider</p>
+                <p class="pane-copy">openai</p>
+              </div>
+              <div class="pane wide">
+                <p class="pane-title">trace</p>
+                <ul class="trace-list">
+                  <li><span>00:01</span><span>context packed</span><span class="status">ok</span></li>
+                  <li><span>00:03</span><span>tool call gated</span><span class="status wait">hold</span></li>
+                  <li><span>00:05</span><span>patch verified</span><span class="status">ok</span></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="scene-4" class="scene clip" data-start="10.9" data-duration="3.44" data-track-index="1">
+        <div class="grid"></div>
+        <div class="content">
+          <span class="kicker" id="s4-kicker">operator modes</span>
+          <h2 id="s4-title">Guardrails when you want them. YOLO when you mean it.</h2>
+          <p class="subtitle" id="s4-copy">
+            The harness makes operating posture explicit before the agent starts moving.
+          </p>
+          <div class="mode-stack" id="s4-modes">
+            <div class="mode">
+              <span class="mode-number">01</span>
+              <span class="mode-name">Default</span>
+              <span class="mode-copy">careful approvals and normal execution boundaries</span>
+            </div>
+            <div class="mode">
+              <span class="mode-number">02</span>
+              <span class="mode-name">Work</span>
+              <span class="mode-copy">interactive coding turns with repo-local context</span>
+            </div>
+            <div class="mode">
+              <span class="mode-number">03</span>
+              <span class="mode-name">YOLO</span>
+              <span class="mode-copy">low-friction harness preset for trusted local loops</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="scene-5" class="scene clip" data-start="14.35" data-duration="3.65" data-track-index="1">
+        <div class="grid grid-strong"></div>
+        <div class="scanline" id="scan-5"></div>
+        <div class="content">
+          <div class="final-lockup">
+            <div>
+              <span class="kicker" id="s5-kicker">ship from the terminal</span>
+              <h2 id="s5-title">One launcher for agentic coding on your machine.</h2>
+              <p class="subtitle" id="s5-copy">
+                Local state. Provider choice. TUI visibility. Verification before confidence.
+              </p>
+            </div>
+            <div class="command-list" id="s5-commands">
+              <div class="command-line">$ unclecode work</div>
+              <div class="command-line">$ unclecode doctor</div>
+              <div class="command-line">$ unclecode harness status</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="block-transition" id="blocks-a">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="block-transition blue-transition" id="blocks-b">
+        <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div class="white-flash" id="flash"></div>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+
+      const tl = gsap.timeline({ paused: true });
+      const sceneTimes = [0, 3.6, 7.2, 10.9, 14.35];
+
+      function sceneIn(scene, at) {
+        tl.from(`${scene} .kicker`, { y: -24, opacity: 0, duration: 0.34, ease: "power4.out" }, at + 0.14);
+        tl.from(`${scene} h1, ${scene} h2`, { x: -66, opacity: 0, duration: 0.56, ease: "expo.out" }, at + 0.28);
+        tl.from(`${scene} .subtitle`, { y: 42, opacity: 0, duration: 0.48, ease: "power2.out" }, at + 0.52);
+      }
+
+      function blockReveal(blocks, previousScene, nextScene, at) {
+        tl.set(blocks, { zIndex: 20 }, at);
+        tl.to(`${blocks} span`, {
+          scaleY: 1,
+          duration: 0.24,
+          ease: "power3.in",
+          stagger: { each: 0.028, from: "start" },
+        }, at);
+        tl.set(nextScene, { visibility: "visible" }, at + 0.31);
+        tl.to(`${blocks} span`, {
+          scaleY: 0,
+          duration: 0.28,
+          ease: "power3.out",
+          stagger: { each: 0.024, from: "end" },
+        }, at + 0.34);
+        tl.set(previousScene, { visibility: "hidden" }, at + 0.66);
+      }
+
+      function flashReveal(previousScene, nextScene, at) {
+        tl.to("#flash", { opacity: 1, duration: 0.12, ease: "power4.in" }, at);
+        tl.set(nextScene, { visibility: "visible" }, at + 0.12);
+        tl.to("#flash", { opacity: 0, duration: 0.32, ease: "power2.out" }, at + 0.16);
+        tl.set(previousScene, { visibility: "hidden" }, at + 0.48);
+      }
+
+      sceneIn("#scene-1", sceneTimes[0]);
+      tl.from("#s1-terminal", { x: 120, opacity: 0, scale: 0.96, duration: 0.62, ease: "back.out(1.35)" }, 0.62);
+      tl.to("#scan-1", { x: 2360, duration: 3.1, ease: "none" }, 0.2);
+
+      blockReveal("#blocks-a", "#scene-1", "#scene-2", 3.22);
+      sceneIn("#scene-2", sceneTimes[1]);
+      tl.from("#s2-providers .provider", {
+        y: 52,
+        opacity: 0,
+        duration: 0.38,
+        ease: "back.out(1.55)",
+        stagger: 0.055,
+      }, sceneTimes[1] + 0.68);
+
+      blockReveal("#blocks-b", "#scene-2", "#scene-3", 6.86);
+      sceneIn("#scene-3", sceneTimes[2]);
+      tl.from("#s3-dashboard .pane", {
+        x: 48,
+        opacity: 0,
+        duration: 0.44,
+        ease: "power3.out",
+        stagger: 0.08,
+      }, sceneTimes[2] + 0.62);
+      tl.from("#s3-dashboard .trace-list li", {
+        x: -34,
+        opacity: 0,
+        duration: 0.32,
+        ease: "circ.out",
+        stagger: 0.08,
+      }, sceneTimes[2] + 1.06);
+
+      flashReveal("#scene-3", "#scene-4", 10.52);
+      sceneIn("#scene-4", sceneTimes[3]);
+      tl.from("#s4-modes .mode", {
+        y: 58,
+        opacity: 0,
+        scale: 0.97,
+        duration: 0.46,
+        ease: "expo.out",
+        stagger: 0.12,
+      }, sceneTimes[3] + 0.66);
+
+      blockReveal("#blocks-a", "#scene-4", "#scene-5", 14.0);
+      sceneIn("#scene-5", sceneTimes[4]);
+      tl.from("#s5-commands .command-line", {
+        x: 76,
+        opacity: 0,
+        duration: 0.45,
+        ease: "back.out(1.4)",
+        stagger: 0.1,
+      }, sceneTimes[4] + 0.78);
+      tl.to("#scan-5", { x: 2360, duration: 3.2, ease: "none" }, sceneTimes[4] + 0.2);
+
+      tl.to("#scene-5", { opacity: 0, duration: 0.65, ease: "sine.inOut" }, 17.25);
+      window.__timelines["unclecode-demo"] = tl;
+    </script>
+  </body>
+</html>
