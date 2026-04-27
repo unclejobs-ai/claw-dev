@@ -42,6 +42,8 @@ export const SESSION_CHECKPOINT_TYPES = [
   "mode",
   "worktree",
   "approval",
+  "team_run",
+  "team_step",
 ] as const;
 
 export type SessionCheckpointType = (typeof SESSION_CHECKPOINT_TYPES)[number];
@@ -77,10 +79,14 @@ export type SessionApprovalCheckpoint = {
   readonly pendingAction: SessionPendingAction;
 };
 
+import type { TeamRunCheckpoint, TeamStepCheckpoint } from "./team.js";
+
 export type SessionCheckpoint =
   | SessionStateCheckpoint
   | SessionMetadataCheckpoint
   | SessionTaskSummaryCheckpoint
   | SessionModeCheckpoint
   | SessionWorktreeCheckpoint
-  | SessionApprovalCheckpoint;
+  | SessionApprovalCheckpoint
+  | TeamRunCheckpoint
+  | TeamStepCheckpoint;

@@ -336,6 +336,12 @@ export function applyCheckpoint(
         updatedAt,
         pendingAction: checkpoint.pendingAction,
       };
+    case "team_run":
+    case "team_step":
+      return {
+        ...snapshot,
+        updatedAt,
+      };
   }
 }
 

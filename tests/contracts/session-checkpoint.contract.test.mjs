@@ -14,6 +14,8 @@ test("session-checkpoint fixtures expose canonical restore-safe checkpoint shape
     "mode",
     "worktree",
     "approval",
+    "team_run",
+    "team_step",
   ]);
 
   assert.deepEqual(SESSION_METADATA_FIELDS, [
