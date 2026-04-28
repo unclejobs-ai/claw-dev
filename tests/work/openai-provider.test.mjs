@@ -375,9 +375,49 @@ test("OpenAIProvider uses the Codex backend for codex oauth runtime", async () =
   assert.equal(capturedUrl, "https://chatgpt.com/backend-api/codex/responses");
   assert.equal(capturedBody.store, false);
   assert.equal(capturedBody.stream, true);
-  assert.equal(capturedBody.reasoning.effort, "none");
+  // Supported reasoning surfaces effort + summary so Codex streams the
+  // reasoning trace; the "effort=none" hardcode was intentionally
+  // removed in 87759e7 (fix: surface reasoning).
+  assert.equal(capturedBody.reasoning.effort, "high");
+  assert.equal(capturedBody.reasoning.summary, "auto");
+  assert.deepEqual(capturedBody.include, ["reasoning.encrypted_content"]);
   assert.equal(capturedBody.instructions.includes("MyClaudeCode"), true);
   assert.equal(capturedHeaders["ChatGPT-Account-Id"], "acct_123");
+});
+
+test("OpenAIProvider keeps codex reasoning effort=none when reasoning support is unavailable", async () => {
+  let capturedBody;
+  const provider = new OpenAIProvider({
+    apiKey: "header.eyJzY3AiOlsib3BlbmlkIl19.sig",
+    model: "gpt-4.1-mini",
+    cwd: process.cwd(),
+    runtime: "codex",
+    openAIAccountId: "acct_123",
+    reasoning: {
+      effort: "unsupported",
+      source: "model-capability",
+      support: { status: "unsupported", supportedEfforts: [] },
+    },
+    fetchImpl: async (_url, init) => {
+      capturedBody = JSON.parse(String(init?.body ?? "{}"));
+      return {
+        ok: true,
+        async text() {
+          return [
+            'data: {"type":"response.output_item.done","item":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"OK"}]}}',
+            '',
+            'data: {"type":"response.completed","response":{"id":"resp_1"}}',
+            '',
+          ].join("\n");
+        },
+      };
+    },
+  });
+
+  await provider.runTurn("hello");
+
+  assert.equal(capturedBody.reasoning.effort, "none");
+  assert.deepEqual(capturedBody.include, []);
 });
 
 test("OpenAIProvider sends pasted image attachments as multimodal user content", async () => {
