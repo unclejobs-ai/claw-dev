@@ -16,6 +16,8 @@ test("mode-profile fixtures expose canonical modes plus command and skill metada
     "search",
     "analyze",
     "yolo",
+    "plan",
+    "build",
   ]);
 
   assert.deepEqual(MODE_PROFILES.default, {

@@ -1,4 +1,12 @@
-export const MODE_PROFILE_IDS = ["default", "ultrawork", "search", "analyze", "yolo"] as const;
+export const MODE_PROFILE_IDS = [
+  "default",
+  "ultrawork",
+  "search",
+  "analyze",
+  "yolo",
+  "plan",
+  "build",
+] as const;
 
 export type ModeProfileId = (typeof MODE_PROFILE_IDS)[number];
 
@@ -76,6 +84,24 @@ export const MODE_PROFILES = {
     searchDepth: "balanced",
     backgroundTasks: "preferred",
     explanationStyle: "concise",
+    reasoningDefault: "medium",
+  },
+  plan: {
+    id: "plan",
+    label: "Plan",
+    editing: "forbidden",
+    searchDepth: "deep",
+    backgroundTasks: "forbidden",
+    explanationStyle: "detailed",
+    reasoningDefault: "high",
+  },
+  build: {
+    id: "build",
+    label: "Build",
+    editing: "allowed",
+    searchDepth: "balanced",
+    backgroundTasks: "allowed",
+    explanationStyle: "balanced",
     reasoningDefault: "medium",
   },
 } as const satisfies Readonly<Record<ModeProfileId, ModeProfile>>;
