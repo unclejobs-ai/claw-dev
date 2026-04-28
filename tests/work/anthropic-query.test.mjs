@@ -151,6 +151,25 @@ test("AnthropicProvider.query falls back to default system prompt when caller om
   assert.match(captured[0].system, /extra-instructions/);
 });
 
+test("AnthropicProvider.query reports non-zero costUsd when the response carries token usage", async () => {
+  const { client } = makeStubClient([
+    {
+      content: [{ type: "text", text: "ok" }],
+      usage: { input_tokens: 1_000_000, output_tokens: 1_000_000 },
+    },
+  ]);
+  const provider = new AnthropicProvider({
+    apiKey: "sk-ant-test",
+    model: "claude-sonnet-4-6",
+    cwd: process.cwd(),
+    client,
+  });
+
+  const result = await provider.query([{ role: "user", content: "hi" }]);
+  // claude-sonnet-4-6: $3/M input + $15/M output → $18 for 1M+1M
+  assert.equal(result.costUsd, 18.0);
+});
+
 test("AnthropicProvider.query tolerates malformed tool_call argumentsJson", async () => {
   const { client, captured } = makeStubClient([
     { content: [{ type: "text", text: "ok" }] },

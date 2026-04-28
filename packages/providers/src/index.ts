@@ -19,6 +19,7 @@ import { formatOpenAIAuthStatus, resolveOpenAIAuthStatus } from "./openai-status
 import type { ModelRegistry, OpenAIAuthStatus, ReasoningSupport, ResolveOpenAIAuthInput, ResolvedOpenAIAuth } from "./types.js";
 
 export * from "./runtime.js";
+export * from "./model-pricing.js";
 export type { ProviderId };
 export type { ModelRegistry, OpenAIAuthStatus, ReasoningSupport, ResolveOpenAIAuthInput, ResolvedOpenAIAuth } from "./types.js";
 export { ProviderCapabilityMismatchError };

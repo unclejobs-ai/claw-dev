@@ -7,6 +7,7 @@ import type {
 import { FunctionCallingConfigMode, GoogleGenAI } from "@google/genai";
 import { randomUUID } from "node:crypto";
 
+import { estimateCostUsd } from "./model-pricing.js";
 import { redactSecrets } from "./redaction.js";
 import type { ReasoningSupport } from "./types.js";
 
@@ -606,7 +607,19 @@ export class OpenAIProvider implements LlmProvider {
       actions.push({ callId, tool: name, input });
     }
 
-    return { content, actions, costUsd: 0 };
+    const promptTokens = typeof payload.usage?.prompt_tokens === "number"
+      ? payload.usage.prompt_tokens
+      : 0;
+    const completionTokens = typeof payload.usage?.completion_tokens === "number"
+      ? payload.usage.completion_tokens
+      : 0;
+    const costUsd = estimateCostUsd({
+      modelId: model,
+      promptTokens,
+      completionTokens,
+    });
+
+    return { content, actions, costUsd };
   }
 }
 
@@ -848,7 +861,16 @@ export class AnthropicProvider implements LlmProvider {
       }
     }
 
-    return { content, actions, costUsd: 0 };
+    const usage = (response as { usage?: { input_tokens?: number; output_tokens?: number } }).usage;
+    const promptTokens = typeof usage?.input_tokens === "number" ? usage.input_tokens : 0;
+    const completionTokens = typeof usage?.output_tokens === "number" ? usage.output_tokens : 0;
+    const costUsd = estimateCostUsd({
+      modelId: model,
+      promptTokens,
+      completionTokens,
+    });
+
+    return { content, actions, costUsd };
   }
 }
 

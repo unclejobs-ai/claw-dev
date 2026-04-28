@@ -196,6 +196,49 @@ test("OpenAIProvider.query throws on non-2xx response", async () => {
   );
 });
 
+test("OpenAIProvider.query reports non-zero costUsd when the response carries token usage", async () => {
+  const provider = new OpenAIProvider({
+    apiKey: "sk-test-123",
+    model: "gpt-4.1-mini",
+    cwd: process.cwd(),
+    reasoning: UNSUPPORTED_REASONING,
+    fetchImpl: async () => ({
+      ok: true,
+      async json() {
+        return {
+          choices: [{ message: { content: "ok" } }],
+          usage: { prompt_tokens: 1_000_000, completion_tokens: 1_000_000 },
+        };
+      },
+    }),
+  });
+
+  const result = await provider.query([{ role: "user", content: "hi" }]);
+  // gpt-4.1-mini: $0.40/M input + $1.60/M output → $2.00 for 1M+1M
+  assert.equal(result.costUsd, 2.0);
+});
+
+test("OpenAIProvider.query falls back to zero cost when the model is unknown", async () => {
+  const provider = new OpenAIProvider({
+    apiKey: "sk-test-123",
+    model: "no-such-model",
+    cwd: process.cwd(),
+    reasoning: UNSUPPORTED_REASONING,
+    fetchImpl: async () => ({
+      ok: true,
+      async json() {
+        return {
+          choices: [{ message: { content: "ok" } }],
+          usage: { prompt_tokens: 1_000_000, completion_tokens: 1_000_000 },
+        };
+      },
+    }),
+  });
+
+  const result = await provider.query([{ role: "user", content: "hi" }]);
+  assert.equal(result.costUsd, 0);
+});
+
 test("OpenAIProvider.query tolerates malformed tool_call arguments", async () => {
   const provider = new OpenAIProvider({
     apiKey: "sk-test-123",
