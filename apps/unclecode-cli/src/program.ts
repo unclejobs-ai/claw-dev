@@ -3,10 +3,12 @@ import {
   formatUncleCodeConfigExplanation,
 } from "@unclecode/config-core";
 import {
+  HARNESS_PRESET_IDS,
   formatHarnessExplainLines,
   formatHarnessStatusLines,
   getHarnessPresetPatch,
   inspectHarnessStatus,
+  isHarnessPresetId,
 } from "./harness.js";
 import {
   MODE_PROFILE_IDS,
@@ -783,8 +785,8 @@ function registerHarnessCommands(program: Command): void {
     .command("apply <preset>")
     .description("Apply a named harness preset (e.g. yolo)")
     .action(async (preset: string) => {
-      if (preset !== "yolo") {
-        process.stderr.write(`Unknown preset: ${preset}. Available: yolo\n`);
+      if (!isHarnessPresetId(preset)) {
+        process.stderr.write(`Unknown preset: ${preset}. Available: ${HARNESS_PRESET_IDS.join(", ")}\n`);
         process.exitCode = 1;
         return;
       }

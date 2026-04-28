@@ -9,7 +9,14 @@ import {
   resolveOpenAIAuthStatus,
 } from "@unclecode/providers/openai-status";
 import { createRuntimeBroker } from "@unclecode/runtime-broker";
-import { createSessionStore } from "@unclecode/session-store";
+import {
+  createSessionStore,
+  getRunStatusFromCheckpoints,
+  readTeamCheckpoints,
+  readTeamRunManifest,
+  verifyTeamRunChain,
+} from "@unclecode/session-store";
+import { listTeamRuns } from "@unclecode/orchestrator";
 import { existsSync, readdirSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -127,6 +134,7 @@ export async function buildFastDoctorReportData(input: {
     ? readdirSync(rulesDir).filter((f) => f.endsWith(".md")).length
     : 0;
   const rulesLabel = rulesCount > 0 ? `${rulesCount} rule${rulesCount > 1 ? "s" : ""} loaded` : "none";
+  const teamSummary = summarizeTeamRunsForFastDoctor(input.workspaceRoot, input.env);
 
   const lines = [
     "Doctor report",
@@ -137,6 +145,7 @@ export async function buildFastDoctorReportData(input: {
     `MCP host       PASS  ${mcpLabel}`,
     `Harness        ${harnessStatus.exists ? "PASS" : "WARN"}  ${harnessLabel}`,
     `Rules          ${rulesCount > 0 ? "PASS" : "INFO"}  ${rulesLabel}`,
+    `Team runs      ${teamSummary.verdict}  ${teamSummary.label}`,
     ...(input.verbose
       ? [
           "",
@@ -195,4 +204,31 @@ export async function buildFastDoctorReport(input: {
 
 export async function buildFastAuthStatusReport(env: NodeJS.ProcessEnv): Promise<string> {
   return formatOpenAIAuthStatus(await resolveOpenAIAuthStatus({ env }));
+}
+
+function summarizeTeamRunsForFastDoctor(workspaceRoot: string, env: NodeJS.ProcessEnv): { verdict: string; label: string } {
+  const dataRoot = env.UNCLECODE_DATA_ROOT?.trim() || path.join(workspaceRoot, ".data");
+  try {
+    const runs = listTeamRuns(dataRoot);
+    if (runs.length === 0) {
+      return { verdict: "INFO", label: "no team runs recorded" };
+    }
+    const latest = runs[runs.length - 1];
+    if (!latest) {
+      return { verdict: "INFO", label: "no team runs recorded" };
+    }
+    const manifest = readTeamRunManifest(latest.runRoot);
+    const status = getRunStatusFromCheckpoints(readTeamCheckpoints(latest.runRoot)) ?? "(no checkpoints)";
+    const chain = verifyTeamRunChain(latest.runRoot);
+    const chainNote = chain.ok ? `chain ${chain.verifiedLines} ok` : `chain BROKEN @ ${chain.brokenAt}`;
+    return {
+      verdict: chain.ok ? "PASS" : "WARN",
+      label: `${runs.length} run(s); latest ${manifest.runId} status=${status}; ${chainNote}`,
+    };
+  } catch (error) {
+    return {
+      verdict: "WARN",
+      label: `inspect failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
 }

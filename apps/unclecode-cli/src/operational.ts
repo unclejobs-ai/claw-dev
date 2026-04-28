@@ -30,7 +30,15 @@ import {
   writeOpenAICredentials,
 } from "@unclecode/providers";
 import { createRuntimeBroker } from "@unclecode/runtime-broker";
-import { createSessionStore, getSessionStoreRoot } from "@unclecode/session-store";
+import {
+  createSessionStore,
+  getSessionStoreRoot,
+  getRunStatusFromCheckpoints,
+  readTeamCheckpoints,
+  readTeamRunManifest,
+  verifyTeamRunChain,
+} from "@unclecode/session-store";
+import { listTeamRuns } from "@unclecode/orchestrator";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, realpath, writeFile } from "node:fs/promises";
@@ -238,6 +246,8 @@ export async function buildDoctorReportData(input: {
   const mcpLabel = `${mcpRegistry.entries.length} servers; transports ${MCP_HOST_SUPPORTED_TRANSPORTS.join(", ")}`;
   const totalMs = elapsedSince(totalStartedAt);
 
+  const teamSummary = await summarizeTeamRunsForDoctor(input.workspaceRoot);
+
   const lines = [
     "Doctor report",
     `Mode           PASS  ${modeLabel}`,
@@ -245,6 +255,7 @@ export async function buildDoctorReportData(input: {
     `Runtime        ${runtimeVerdict}  ${runtimeLabel}`,
     `Session store  PASS  ${sessionStoreRoot}`,
     `MCP host       PASS  ${mcpLabel}`,
+    `Team runs      ${teamSummary.verdict}  ${teamSummary.label}`,
     ...(input.verbose
       ? [
           "",
@@ -1011,3 +1022,31 @@ export {
   runResearchPass,
   runResearchPassData,
 } from "./operational-research.js";
+
+async function summarizeTeamRunsForDoctor(workspaceRoot: string): Promise<{ verdict: string; label: string }> {
+  const dataRoot = process.env.UNCLECODE_DATA_ROOT?.trim() || path.join(workspaceRoot, ".data");
+  try {
+    const runs = listTeamRuns(dataRoot);
+    if (runs.length === 0) {
+      return { verdict: "PASS", label: "no team runs recorded" };
+    }
+    const latest = runs[runs.length - 1];
+    if (!latest) {
+      return { verdict: "PASS", label: "no team runs recorded" };
+    }
+    const manifest = readTeamRunManifest(latest.runRoot);
+    const status = getRunStatusFromCheckpoints(readTeamCheckpoints(latest.runRoot)) ?? "(no checkpoints)";
+    const chain = verifyTeamRunChain(latest.runRoot);
+    const chainNote = chain.ok ? `chain ${chain.verifiedLines} ok` : `chain BROKEN @ ${chain.brokenAt}`;
+    const verdict = chain.ok ? "PASS" : "WARN";
+    return {
+      verdict,
+      label: `${runs.length} run(s); latest ${manifest.runId} status=${status}; ${chainNote}`,
+    };
+  } catch (error) {
+    return {
+      verdict: "WARN",
+      label: `inspect failed: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}

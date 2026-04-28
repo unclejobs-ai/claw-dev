@@ -122,14 +122,48 @@ export function formatHarnessExplainLines(): readonly string[] {
   ];
 }
 
-export type HarnessPresetId = "yolo";
+export const HARNESS_PRESET_IDS = [
+  "yolo",
+  "team-coder",
+  "team-builder",
+  "team-hardener",
+  "team-auditor",
+  "team-agentless",
+] as const;
+
+export type HarnessPresetId = (typeof HARNESS_PRESET_IDS)[number];
+
+const HARNESS_PRESETS: Record<HarnessPresetId, Record<string, string>> = {
+  yolo: {
+    model_reasoning_effort: "medium",
+    approvals_reviewer: "auto-edit",
+  },
+  "team-coder": {
+    model_reasoning_effort: "medium",
+    approvals_reviewer: "auto-edit",
+  },
+  "team-builder": {
+    model_reasoning_effort: "high",
+    approvals_reviewer: "user",
+  },
+  "team-hardener": {
+    model_reasoning_effort: "high",
+    approvals_reviewer: "user",
+  },
+  "team-auditor": {
+    model_reasoning_effort: "low",
+    approvals_reviewer: "user",
+  },
+  "team-agentless": {
+    model_reasoning_effort: "low",
+    approvals_reviewer: "auto-edit",
+  },
+};
+
+export function isHarnessPresetId(value: string): value is HarnessPresetId {
+  return (HARNESS_PRESET_IDS as readonly string[]).includes(value);
+}
 
 export function getHarnessPresetPatch(preset: HarnessPresetId): Record<string, string> {
-  if (preset === "yolo") {
-    return {
-      model_reasoning_effort: "medium",
-      approvals_reviewer: "auto-edit",
-    };
-  }
-  return {};
+  return HARNESS_PRESETS[preset] ?? {};
 }
