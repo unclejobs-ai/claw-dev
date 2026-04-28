@@ -15,6 +15,8 @@ export * from "./agentless/patch-validator.js";
 export * from "./personas/index.js";
 export * from "./team-binding.js";
 export * from "./team-runner.js";
+export * from "./team-mini-loop.js";
+export * from "./aci/run-shell.js";
 export * from "./disk-ownership-registry.js";
 export * from "./clipboard-image.js";
 export * from "./hooks/mmbridge-hooks.js";
