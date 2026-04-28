@@ -748,6 +748,7 @@ export function createUncleCodeProgram(): Command {
   registerResearchCommands(program);
   registerMcpCommands(program);
   registerHarnessCommands(program);
+  registerTeamCommands(program);
 
   return program;
 }
@@ -819,5 +820,56 @@ function registerHarnessCommands(program: Command): void {
       for (const line of formatHarnessStatusLines(updated)) {
         process.stdout.write(`${line}\n`);
       }
+    });
+}
+
+function registerTeamCommands(program: import("commander").Command): void {
+  const team = program.command("team").description("Coordinate multi-agent team runs (Phase C)");
+
+  team
+    .command("run <objective...>")
+    .description("Start a team run and record it under .data/team-runs/<runId>")
+    .option("--persona <id>", "coder|builder|hardener|auditor|agentless-fix|agentless-then-agent|mini", "coder")
+    .option("--lanes <n>", "Parallel worker count", "1")
+    .option("--gate <level>", "strict|warn|off", "strict")
+    .option("--runtime <mode>", "local|docker|e2b", "local")
+    .option("--record <runId>", "Force a specific RUN_ID (resume / external dispatch)")
+    .option("--quiet", "Print only the RUN_ID on stdout")
+    .action(async (objective: string[], options: { persona?: string; lanes?: string; gate?: string; runtime?: string; record?: string; quiet?: boolean }) => {
+      const teamModule = await import("./team.js");
+      await teamModule.handleTeamRun(objective, options);
+    });
+
+  team
+    .command("ls")
+    .description("List recorded team runs")
+    .action(async () => {
+      const teamModule = await import("./team.js");
+      teamModule.handleTeamList();
+    });
+
+  team
+    .command("status [runId]")
+    .description("Show the latest run status, or a specific runId")
+    .action(async (runId?: string) => {
+      const teamModule = await import("./team.js");
+      teamModule.handleTeamStatus(runId);
+    });
+
+  team
+    .command("inspect <runId>")
+    .description("Print run details and optionally verify the hash chain")
+    .option("--verify", "Replay sha256 chain and report tampered lines")
+    .action(async (runId: string, options: { verify?: boolean }) => {
+      const teamModule = await import("./team.js");
+      teamModule.handleTeamInspect(runId, options);
+    });
+
+  team
+    .command("abort <runId>")
+    .description("Append an aborted checkpoint to the run log")
+    .action(async (runId: string) => {
+      const teamModule = await import("./team.js");
+      teamModule.handleTeamAbort(runId);
     });
 }
