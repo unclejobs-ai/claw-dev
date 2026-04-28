@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 
 import {
+  AnthropicProvider,
   OpenAIProvider,
   TeamBinding,
   getPersonaConfig,
   readBindingFromEnv,
   runTeamMiniLoop,
 } from "@unclecode/orchestrator";
+import type { LlmProvider } from "@unclecode/orchestrator";
 import type { PersonaId } from "@unclecode/contracts";
 
 export type TeamWorkerOptions = {
@@ -39,8 +41,10 @@ export async function handleTeamWorker(options: TeamWorkerOptions): Promise<void
     timestamp: new Date().toISOString(),
   });
 
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
   const liveDisabled = process.env.UNCLECODE_TEAM_WORKER_LIVE === "0";
+  const model = process.env.UNCLECODE_TEAM_WORKER_MODEL?.trim() || DEFAULT_TEAM_WORKER_MODEL;
+  const providerName = detectProviderForModel(model);
+  const apiKey = readApiKeyForProvider(providerName);
 
   if (!apiKey || liveDisabled) {
     process.stdout.write(`WORKER_ID=${options.workerId}\n`);
@@ -51,16 +55,9 @@ export async function handleTeamWorker(options: TeamWorkerOptions): Promise<void
     return;
   }
 
-  const model = process.env.UNCLECODE_TEAM_WORKER_MODEL?.trim() || DEFAULT_TEAM_WORKER_MODEL;
-  const provider = new OpenAIProvider({
+  const provider = buildProvider(providerName, {
     apiKey,
     model,
-    cwd: process.cwd(),
-    reasoning: {
-      effort: "unsupported",
-      source: "model-capability",
-      support: { status: "unsupported", supportedEfforts: [] },
-    },
     systemPrompt: config.systemPrompt,
   });
 
@@ -82,4 +79,40 @@ export async function handleTeamWorker(options: TeamWorkerOptions): Promise<void
 
 function truncate(text: string, limit: number): string {
   return text.length <= limit ? text : `${text.slice(0, limit)}…`;
+}
+
+type LiveProvider = "openai" | "anthropic";
+
+function detectProviderForModel(model: string): LiveProvider {
+  return model.toLowerCase().startsWith("claude") ? "anthropic" : "openai";
+}
+
+function readApiKeyForProvider(name: LiveProvider): string | undefined {
+  const envName = name === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
+  return process.env[envName]?.trim();
+}
+
+function buildProvider(
+  name: LiveProvider,
+  args: { apiKey: string; model: string; systemPrompt: string },
+): LlmProvider {
+  if (name === "anthropic") {
+    return new AnthropicProvider({
+      apiKey: args.apiKey,
+      model: args.model,
+      cwd: process.cwd(),
+      systemPrompt: args.systemPrompt,
+    });
+  }
+  return new OpenAIProvider({
+    apiKey: args.apiKey,
+    model: args.model,
+    cwd: process.cwd(),
+    reasoning: {
+      effort: "unsupported",
+      source: "model-capability",
+      support: { status: "unsupported", supportedEfforts: [] },
+    },
+    systemPrompt: args.systemPrompt,
+  });
 }
