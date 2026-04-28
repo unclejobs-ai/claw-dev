@@ -15,6 +15,7 @@
     { "path": "packages/lsp-bridge" },
     { "path": "packages/orchestrator" },
     { "path": "packages/tui" },
-    { "path": "apps/unclecode-cli" }
+    { "path": "apps/unclecode-cli" },
+    { "path": "apps/unclecode-server" }
   ]
 }

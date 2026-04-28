@@ -19,6 +19,7 @@
     "test:snapshot-store": "node --conditions=source --import tsx --test tests/snapshot-store/*.test.mjs",
     "test:plugin-host": "node --conditions=source --import tsx --test tests/plugin-host/*.test.mjs",
     "test:lsp-bridge": "node --conditions=source --import tsx --test tests/lsp-bridge/*.test.mjs",
+    "test:server": "node --conditions=source --import tsx --test tests/unclecode-server/*.test.mjs",
     "test:providers": "node --conditions=source --import tsx --test tests/providers/*.test.mjs",
     "test:contracts": "node --conditions=source --import tsx --test tests/contracts/*.test.mjs",
     "test:runtime-broker": "node --conditions=source --import tsx --test tests/runtime-broker/*.test.mjs",
