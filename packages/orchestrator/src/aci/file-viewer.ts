@@ -5,7 +5,8 @@
  */
 
 import { readFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+
+import { assertWithinWorkspace } from "./path-containment.js";
 
 export const DEFAULT_VIEWER_WINDOW = 100;
 
@@ -47,7 +48,7 @@ function renderWindow(absPath: string, state: ViewerState): string {
 
 export function openFile(input: { cwd: string; path: string; window?: number }): ViewerOutput {
   const window = input.window ?? DEFAULT_VIEWER_WINDOW;
-  const absPath = resolve(input.cwd, input.path);
+  const absPath = assertWithinWorkspace(input.cwd, input.path);
   statSync(absPath);
   const lines = readLines(absPath);
   const totalLines = lines.length;

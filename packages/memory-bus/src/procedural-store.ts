@@ -25,7 +25,11 @@ export type SopEntry = {
 };
 
 function sanitizeSlug(value: string): string {
-  return value.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(0, 80);
+  return value
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^\.+/, "")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "untitled";
 }
 
 function sopDirForPeer(workspaceRoot: string, peer: Peer): string {

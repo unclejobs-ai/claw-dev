@@ -100,7 +100,7 @@ test("dialectic reads procedural SOP citations matching the query", async () => 
       { workspaceRoot: dir },
     );
     assert.equal(result.citations.length, 1);
-    assert.equal(result.citations[0].category, "workspace_guidance");
+    assert.equal(result.citations[0].category, "memory_observation");
     assert.match(result.synthesized ?? "", /auth token expiry check/);
   } finally {
     rmSync(dir, { recursive: true, force: true });

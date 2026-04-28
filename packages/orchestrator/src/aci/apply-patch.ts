@@ -9,7 +9,8 @@
  */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+
+import { assertWithinWorkspace, PathContainmentError } from "./path-containment.js";
 
 export type PatchHunk = {
   readonly oldStart: number;
@@ -101,7 +102,16 @@ export function applyPatch(input: ApplyPatchInput): ApplyPatchResult {
 
   for (const file of files) {
     const target = file.newPath || file.oldPath;
-    const absPath = resolve(input.cwd, target);
+    let absPath: string;
+    try {
+      absPath = assertWithinWorkspace(input.cwd, target, { allowMissing: true });
+    } catch (error) {
+      if (error instanceof PathContainmentError) {
+        rejected.push({ path: target, hunkIndex: 0, reason: error.message });
+        continue;
+      }
+      throw error;
+    }
     const original = existsSync(absPath) ? readFileSync(absPath, "utf8") : "";
     const lines = original.split(/\r?\n/);
     let working = lines.slice();

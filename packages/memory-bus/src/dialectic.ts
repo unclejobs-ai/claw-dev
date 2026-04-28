@@ -47,7 +47,7 @@ export async function dialectic(
       if (sop.content.toLowerCase().includes(query.query.toLowerCase())) {
         const versionHash = createHash("sha256").update(sop.content).digest("hex");
         citations.push({
-          category: "procedural" === query.category ? "workspace_guidance" : "workspace_guidance",
+          category: "memory_observation",
           key: sop.path,
           versionHash,
           retrievedAt: Date.now(),

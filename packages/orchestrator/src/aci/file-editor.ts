@@ -7,10 +7,10 @@
  */
 
 import { readFileSync, writeFileSync, statSync } from "node:fs";
-import { resolve } from "node:path";
 
 import type { LintResult, LintRunner } from "./linter-guardrail.js";
 import { defaultLintRunner } from "./linter-guardrail.js";
+import { assertWithinWorkspace } from "./path-containment.js";
 
 export type EditInput = {
   readonly cwd: string;
@@ -32,7 +32,7 @@ export type EditOptions = {
 
 export async function editFile(input: EditInput, options: EditOptions = {}): Promise<EditResult> {
   const lintRunner = options.lintRunner ?? defaultLintRunner;
-  const absPath = resolve(input.cwd, input.path);
+  const absPath = assertWithinWorkspace(input.cwd, input.path);
   statSync(absPath);
   const original = readFileSync(absPath, "utf8");
   const lines = original.split(/\r?\n/);
