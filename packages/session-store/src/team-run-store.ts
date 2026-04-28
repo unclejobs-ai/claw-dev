@@ -28,6 +28,9 @@ const MANIFEST_FILENAME = "manifest.json";
 const CHECKPOINTS_FILENAME = "checkpoints.ndjson";
 const TIP_FILENAME = ".tip";
 const LOCK_FILENAME = ".lock";
+const APPEND_LOCK_FILENAME = ".append.lock";
+const APPEND_LOCK_RETRIES = 50;
+const APPEND_LOCK_DELAY_MS = 4;
 const WORKERS_DIRNAME = "workers";
 const REVIEWS_DIRNAME = "reviews";
 const ZERO_HASH = "0".repeat(64);
@@ -174,28 +177,72 @@ function getCurrentTipHash(runRoot: string, checkpointsPath: string): string {
   }
 }
 
+function acquireAppendLock(runRoot: string): () => void {
+  const lockPath = join(runRoot, APPEND_LOCK_FILENAME);
+  const deadline = Date.now() + APPEND_LOCK_RETRIES * APPEND_LOCK_DELAY_MS;
+  let fd: number | undefined;
+  for (let attempt = 0; attempt <= APPEND_LOCK_RETRIES; attempt += 1) {
+    try {
+      fd = openSync(lockPath, "wx");
+      writeFileSync(fd, `${process.pid}:${Date.now()}`);
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+        throw error;
+      }
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `appendTeamCheckpoint: could not acquire ${lockPath} after ${APPEND_LOCK_RETRIES} retries`,
+        );
+      }
+      const start = Date.now();
+      while (Date.now() - start < APPEND_LOCK_DELAY_MS) {
+        // tight spin — total wait bounded by APPEND_LOCK_RETRIES * APPEND_LOCK_DELAY_MS
+      }
+    }
+  }
+  if (fd !== undefined) {
+    closeSync(fd);
+  }
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    try {
+      unlinkSync(lockPath);
+    } catch {
+      // already gone
+    }
+  };
+}
+
 export function appendTeamCheckpoint(
   runRoot: string,
   checkpoint: AppendableTeamCheckpoint,
 ): TeamCheckpoint {
   const checkpointsPath = join(runRoot, CHECKPOINTS_FILENAME);
-  const prevTipHash = getCurrentTipHash(runRoot, checkpointsPath);
+  const releaseAppendLock = acquireAppendLock(runRoot);
+  try {
+    const prevTipHash = getCurrentTipHash(runRoot, checkpointsPath);
 
-  if (
-    typeof checkpoint.prevTipHash === "string"
-    && checkpoint.prevTipHash !== prevTipHash
-  ) {
-    throw new Error(
-      `prevTipHash mismatch: expected ${prevTipHash}, got ${checkpoint.prevTipHash}`,
-    );
+    if (
+      typeof checkpoint.prevTipHash === "string"
+      && checkpoint.prevTipHash !== prevTipHash
+    ) {
+      throw new Error(
+        `prevTipHash mismatch: expected ${prevTipHash}, got ${checkpoint.prevTipHash}`,
+      );
+    }
+
+    const withoutLineHash = { ...checkpoint, prevTipHash } as Record<string, unknown>;
+    const lineHash = hashLine(prevTipHash, withoutLineHash);
+    const finalCheckpoint = { ...withoutLineHash, lineHash } as TeamCheckpoint;
+    appendFileSync(checkpointsPath, `${JSON.stringify(finalCheckpoint)}\n`);
+    writeFileSync(join(runRoot, TIP_FILENAME), lineHash);
+    return finalCheckpoint;
+  } finally {
+    releaseAppendLock();
   }
-
-  const withoutLineHash = { ...checkpoint, prevTipHash } as Record<string, unknown>;
-  const lineHash = hashLine(prevTipHash, withoutLineHash);
-  const finalCheckpoint = { ...withoutLineHash, lineHash } as TeamCheckpoint;
-  appendFileSync(checkpointsPath, `${JSON.stringify(finalCheckpoint)}\n`);
-  writeFileSync(join(runRoot, TIP_FILENAME), lineHash);
-  return finalCheckpoint;
 }
 
 export function readTeamCheckpoints(runRoot: string): ReadonlyArray<TeamCheckpoint> {
