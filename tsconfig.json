@@ -12,6 +12,7 @@
     { "path": "packages/memory-bus" },
     { "path": "packages/snapshot-store" },
     { "path": "packages/plugin-host" },
+    { "path": "packages/lsp-bridge" },
     { "path": "packages/orchestrator" },
     { "path": "packages/tui" },
     { "path": "apps/unclecode-cli" }
