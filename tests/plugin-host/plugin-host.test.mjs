@@ -4,7 +4,15 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { PluginHost, discoverPluginNames } from "@unclecode/plugin-host";
+import {
+  PluginHost,
+  PluginTrustError,
+  discoverPluginNames,
+  isWorkspaceTrusted,
+  listTrustedWorkspaces,
+  recordWorkspaceTrust,
+  revokeWorkspaceTrust,
+} from "@unclecode/plugin-host";
 
 test("PluginHost dispatches lifecycle events to registered hooks", async () => {
   const host = new PluginHost();
@@ -56,5 +64,62 @@ test("discoverPluginNames lists ts/mjs files in .unclecode/plugins", () => {
     assert.deepEqual(names.sort(), ["alpha", "beta"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("loadFromDisk refuses untrusted workspaces and accepts trusted ones", async () => {
+  const home = mkdtempSync(join(tmpdir(), "uc-trust-home-"));
+  const workspace = mkdtempSync(join(tmpdir(), "uc-trust-ws-"));
+  try {
+    const pluginsDir = join(workspace, ".unclecode", "plugins");
+    mkdirSync(pluginsDir, { recursive: true });
+    writeFileSync(
+      join(pluginsDir, "tap.mjs"),
+      "export default ({ log }) => { log('loaded'); return { runStarted: () => {} }; };",
+    );
+
+    const host = new PluginHost();
+    assert.equal(isWorkspaceTrusted(workspace, home), false);
+    assert.deepEqual(listTrustedWorkspaces(home), []);
+
+    await assert.rejects(
+      () => host.loadFromDisk(workspace, { homeDir: home }),
+      (err) => err instanceof PluginTrustError && err.workspaceRoot.includes("uc-trust-ws-"),
+    );
+
+    recordWorkspaceTrust(workspace, home);
+    assert.equal(isWorkspaceTrusted(workspace, home), true);
+
+    const loaded = await host.loadFromDisk(workspace, { homeDir: home });
+    assert.deepEqual([...loaded], ["tap"]);
+    assert.equal(host.list().length, 1);
+
+    revokeWorkspaceTrust(workspace, home);
+    assert.equal(isWorkspaceTrusted(workspace, home), false);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test("loadFromDisk respects requireTrust:false escape hatch", async () => {
+  const home = mkdtempSync(join(tmpdir(), "uc-trust-home-"));
+  const workspace = mkdtempSync(join(tmpdir(), "uc-trust-ws-"));
+  try {
+    const pluginsDir = join(workspace, ".unclecode", "plugins");
+    mkdirSync(pluginsDir, { recursive: true });
+    writeFileSync(
+      join(pluginsDir, "auto.mjs"),
+      "export default () => ({ runCompleted: () => {} });",
+    );
+    const host = new PluginHost();
+    const loaded = await host.loadFromDisk(workspace, {
+      homeDir: home,
+      requireTrust: false,
+    });
+    assert.deepEqual([...loaded], ["auto"]);
+  } finally {
+    rmSync(workspace, { recursive: true, force: true });
+    rmSync(home, { recursive: true, force: true });
   }
 });

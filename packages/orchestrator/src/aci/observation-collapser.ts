@@ -16,24 +16,21 @@ const COLLAPSE_PREFIX = "Output collapsed for brevity";
 export function collapseOlderObservations(
   messages: ReadonlyArray<MiniLoopMessage>,
   keepFull = 5,
-): ReadonlyArray<MiniLoopMessage> {
-  const toolIndices: number[] = [];
-  for (let index = 0; index < messages.length; index += 1) {
-    const message = messages[index];
-    if (message?.role === "tool") {
-      toolIndices.push(index);
-    }
+): MiniLoopMessage[] {
+  let totalTools = 0;
+  for (const message of messages) {
+    if (message.role === "tool") totalTools += 1;
   }
-  if (toolIndices.length <= keepFull) {
-    return messages;
+  if (totalTools <= keepFull) {
+    return messages.slice();
   }
-
-  const collapseSet = new Set(toolIndices.slice(0, toolIndices.length - keepFull));
-  return messages.map((message, index) => {
-    if (!collapseSet.has(index) || message.collapsed) {
-      return message;
-    }
-    return collapseMessage(message);
+  const collapseLimit = totalTools - keepFull;
+  let seenTools = 0;
+  return messages.map((message) => {
+    if (message.role !== "tool" || message.collapsed) return message;
+    seenTools += 1;
+    if (seenTools <= collapseLimit) return collapseMessage(message);
+    return message;
   });
 }
 

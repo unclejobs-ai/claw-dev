@@ -65,13 +65,10 @@ async function main() {
     runtime,
   ];
 
-  const child = spawn(cliBin, args, {
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      HERMES_PAYLOAD: payloadRaw,
-    },
-  });
+  // Payload is forwarded via positional argv only. We do NOT propagate it via
+  // an environment variable — env vars on POSIX are visible to other users
+  // via `ps auxe`, and the payload may carry secrets.
+  const child = spawn(cliBin, args, { stdio: "inherit" });
   child.on("exit", (code) => {
     process.exit(code ?? 0);
   });

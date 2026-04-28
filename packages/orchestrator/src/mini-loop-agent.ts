@@ -176,7 +176,7 @@ export class MiniLoopAgent {
         }
       }
 
-      this.messages = [...collapseOlderObservations(this.messages, 5)];
+      this.messages = collapseOlderObservations(this.messages, 5);
     }
   }
 

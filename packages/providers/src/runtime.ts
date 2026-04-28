@@ -7,6 +7,7 @@ import type {
 import { FunctionCallingConfigMode, GoogleGenAI } from "@google/genai";
 import { randomUUID } from "node:crypto";
 
+import { redactSecrets } from "./redaction.js";
 import type { ReasoningSupport } from "./types.js";
 
 export type AgentTurnResult = {
@@ -251,7 +252,7 @@ export class OpenAIProvider implements LlmProvider {
         model: this.model,
         kind: "text",
         itemId: `chat_${Date.now()}`,
-        delta: reasoningContent,
+        delta: redactSecrets(reasoningContent),
       });
     }
     return message;
@@ -330,7 +331,7 @@ export class OpenAIProvider implements LlmProvider {
           model: this.model,
           kind,
           itemId,
-          delta,
+          delta: redactSecrets(delta),
         });
       },
     });

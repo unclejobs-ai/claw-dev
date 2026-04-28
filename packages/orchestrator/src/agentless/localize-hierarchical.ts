@@ -9,10 +9,17 @@
  * we later swap to a Kimi-Dev-style trained localizer.
  */
 
+import { execFile } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { extname, isAbsolute, relative, resolve } from "node:path";
+import { promisify } from "node:util";
 
-import { findFile, searchDir } from "../aci/search.js";
+const execFileAsync = promisify(execFile);
+
+const RG_MAX_BUFFER = 8 * 1024 * 1024;
+const RG_EXCLUDE_GLOBS = ["!node_modules", "!dist"];
+const FILE_HITS_PER_TOKEN = 25;
+const SEARCH_HITS_PER_TOKEN = 25;
 
 export type LocalizationCandidate = {
   readonly path: string;
@@ -88,33 +95,90 @@ async function collectCandidatePaths(input: LocalizeInput): Promise<ReadonlyArra
     const rel = relative(absRoot, path);
     return rel.length > 0 ? rel : path;
   };
-  for (const hint of input.hintFiles ?? []) {
-    const normalized = toRelative(hint);
+  const addPath = (path: string): void => {
+    const normalized = toRelative(path);
     if (!seen.has(normalized)) {
       seen.add(normalized);
       ordered.push(normalized);
     }
+  };
+
+  for (const hint of input.hintFiles ?? []) {
+    addPath(hint);
   }
   const tokens = extractTokens(input.issue);
+  if (tokens.length === 0) return ordered;
+
+  const allFiles = await rgListFiles(absRoot);
   for (const token of tokens) {
-    const filenameMatches = await findFile({ cwd: input.cwd, pattern: token, cap: 25 });
-    for (const hit of filenameMatches.hits) {
-      const normalized = toRelative(hit.path);
-      if (!seen.has(normalized)) {
-        seen.add(normalized);
-        ordered.push(normalized);
-      }
-    }
-    const textMatches = await searchDir({ cwd: input.cwd, query: token, cap: 25 });
-    for (const hit of textMatches.hits) {
-      const normalized = toRelative(hit.path);
-      if (!seen.has(normalized)) {
-        seen.add(normalized);
-        ordered.push(normalized);
+    const lower = token.toLowerCase();
+    let added = 0;
+    for (const path of allFiles) {
+      if (added >= FILE_HITS_PER_TOKEN) break;
+      if (path.toLowerCase().includes(lower)) {
+        addPath(path);
+        added += 1;
       }
     }
   }
+
+  const contentHits = await rgSearchAnyToken(absRoot, tokens, SEARCH_HITS_PER_TOKEN);
+  for (const path of contentHits) {
+    addPath(path);
+  }
+
   return ordered;
+}
+
+async function rgListFiles(absRoot: string): Promise<ReadonlyArray<string>> {
+  const args = ["--files", "--hidden", ...buildGlobArgs(), absRoot];
+  const stdout = await runRg(args);
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+async function rgSearchAnyToken(
+  absRoot: string,
+  tokens: ReadonlyArray<string>,
+  perTokenCap: number,
+): Promise<ReadonlyArray<string>> {
+  const patternArgs: string[] = [];
+  for (const token of tokens) {
+    patternArgs.push("-e", token);
+  }
+  const args = [
+    "-l",
+    "--hidden",
+    "--max-count",
+    String(perTokenCap),
+    ...buildGlobArgs(),
+    ...patternArgs,
+    absRoot,
+  ];
+  const stdout = await runRg(args);
+  return stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function buildGlobArgs(): string[] {
+  const args: string[] = [];
+  for (const glob of RG_EXCLUDE_GLOBS) {
+    args.push("--glob", glob);
+  }
+  return args;
+}
+
+async function runRg(args: string[]): Promise<string> {
+  try {
+    const result = await execFileAsync("rg", args, { maxBuffer: RG_MAX_BUFFER });
+    return result.stdout;
+  } catch (error) {
+    return (error as { stdout?: string }).stdout ?? "";
+  }
 }
 
 function extractTokens(text: string): ReadonlyArray<string> {

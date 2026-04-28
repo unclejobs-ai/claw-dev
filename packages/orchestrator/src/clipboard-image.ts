@@ -42,19 +42,25 @@ function captureMacOs(): ClipboardImageResult {
     return { status: "failed", reason: `pbpaste exec failed: ${(error as Error).message}` };
   }
   try {
+    // Path is passed via env attribute, never interpolated into AppleScript source.
     execFileSync(
       "osascript",
       [
         "-e",
+        `set p to system attribute "UC_CLIP_PATH"`,
+        "-e",
         `set imageData to the clipboard as «class PNGf»`,
         "-e",
-        `set f to open for access POSIX file "${path}" with write permission`,
+        `set f to open for access POSIX file p with write permission`,
         "-e",
         `write imageData to f`,
         "-e",
         `close access f`,
       ],
-      { stdio: ["ignore", "pipe", "pipe"] },
+      {
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, UC_CLIP_PATH: path },
+      },
     );
   } catch (error) {
     rmSync(dir, { recursive: true, force: true });
@@ -105,11 +111,15 @@ function captureLinux(): ClipboardImageResult {
 function captureWindows(): ClipboardImageResult {
   const dir = mkdtempSync(join(tmpdir(), "uc-clip-"));
   const path = join(dir, "clip.png");
-  const ps = `Add-Type -AssemblyName System.Windows.Forms;` +
-    `$img = [System.Windows.Forms.Clipboard]::GetImage();` +
-    `if ($img -ne $null) { $img.Save("${path.replace(/\\/g, "\\\\")}", [System.Drawing.Imaging.ImageFormat]::Png) } else { exit 1 }`;
+  // Path passed via env, read inside PowerShell as $env:UC_CLIP_PATH (no string interpolation).
+  const ps = "Add-Type -AssemblyName System.Windows.Forms;"
+    + "$img = [System.Windows.Forms.Clipboard]::GetImage();"
+    + "if ($img -ne $null) { $img.Save($env:UC_CLIP_PATH, [System.Drawing.Imaging.ImageFormat]::Png) } else { exit 1 }";
   try {
-    execFileSync("powershell.exe", ["-Command", ps], { stdio: ["ignore", "pipe", "pipe"] });
+    execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", ps], {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, UC_CLIP_PATH: path },
+    });
   } catch {
     rmSync(dir, { recursive: true, force: true });
     return { status: "no-image", reason: "clipboard does not hold an image" };

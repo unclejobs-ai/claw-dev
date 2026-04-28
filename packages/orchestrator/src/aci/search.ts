@@ -29,6 +29,7 @@ export type FindFileInput = {
   readonly cwd: string;
   readonly pattern: string;
   readonly cap?: number;
+  readonly globs?: ReadonlyArray<string>;
 };
 
 export type SearchDirInput = {
@@ -36,12 +37,25 @@ export type SearchDirInput = {
   readonly query: string;
   readonly path?: string;
   readonly cap?: number;
+  readonly globs?: ReadonlyArray<string>;
+  readonly maxCountPerFile?: number;
 };
+
+const DEFAULT_EXCLUDE_GLOBS = ["!node_modules", "!dist"];
+
+function buildGlobArgs(globs: ReadonlyArray<string> | undefined): string[] {
+  const all = [...DEFAULT_EXCLUDE_GLOBS, ...(globs ?? [])];
+  const args: string[] = [];
+  for (const glob of all) {
+    args.push("--glob", glob);
+  }
+  return args;
+}
 
 export async function findFile(input: FindFileInput): Promise<SearchResult> {
   const cap = input.cap ?? DEFAULT_SEARCH_CAP;
   const absRoot = resolve(input.cwd);
-  const args = ["--files", "--hidden", "--glob", "!node_modules", "--glob", "!dist", absRoot];
+  const args = ["--files", "--hidden", ...buildGlobArgs(input.globs), absRoot];
   let stdout = "";
   try {
     const result = await execFileAsync("rg", args, { maxBuffer: 8 * 1024 * 1024 });
@@ -64,7 +78,7 @@ export async function findFile(input: FindFileInput): Promise<SearchResult> {
     hits,
     ...(truncated
       ? {
-          suggestion: `Found ${matched.length} matches for "${input.pattern}"; only the first ${cap} returned. Refine the pattern (e.g., add a directory prefix) and search again.`,
+          suggestion: `Found ${matched.length} matches for "${input.pattern}"; only the first ${cap} returned. Refine the pattern (e.g., add a directory prefix or pass globs) and search again.`,
         }
       : {}),
   };
@@ -73,7 +87,16 @@ export async function findFile(input: FindFileInput): Promise<SearchResult> {
 export async function searchDir(input: SearchDirInput): Promise<SearchResult> {
   const cap = input.cap ?? DEFAULT_SEARCH_CAP;
   const target = resolve(input.cwd, input.path ?? ".");
-  const args = ["-n", "--hidden", "--glob", "!node_modules", "--glob", "!dist", input.query, target];
+  const maxCountPerFile = input.maxCountPerFile ?? Math.max(1, cap);
+  const args = [
+    "-n",
+    "--hidden",
+    "--max-count",
+    String(maxCountPerFile),
+    ...buildGlobArgs(input.globs),
+    input.query,
+    target,
+  ];
   let stdout = "";
   try {
     const result = await execFileAsync("rg", args, { maxBuffer: 8 * 1024 * 1024 });
@@ -103,7 +126,7 @@ export async function searchDir(input: SearchDirInput): Promise<SearchResult> {
     hits,
     ...(truncated
       ? {
-          suggestion: `Found ${totalHits} matches for "${input.query}"; only the first ${cap} returned. Refine the query (e.g., add a path filter, use a more specific token) and search again.`,
+          suggestion: `Found ${totalHits} matches for "${input.query}"; only the first ${cap} returned. Refine the query (e.g., add a path filter, pass globs, or use a more specific token) and search again.`,
         }
       : {}),
   };
