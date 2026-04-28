@@ -4,11 +4,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+
 import {
   diskClaimAll,
   diskRelease,
   diskReleaseAll,
   diskOwnerOf,
+  sweepStaleLocks,
 } from "@unclecode/orchestrator";
 
 function makeRunRoot() {
@@ -61,6 +65,23 @@ test("diskClaimAll is idempotent for the same worker", () => {
     assert.equal(a.ok, true);
     const b = diskClaimAll({ runRoot, workerId: "w1", filePaths: ["src/a.ts"] });
     assert.equal(b.ok, true);
+  } finally {
+    rmSync(runRoot, { recursive: true, force: true });
+  }
+});
+
+test("sweepStaleLocks reclaims locks for dead pids and leaves live ones", () => {
+  const runRoot = makeRunRoot();
+  try {
+    diskClaimAll({ runRoot, workerId: "live", filePaths: ["src/live.ts"] });
+    const stalePath = join(runRoot, "locks", `${createHash("sha256").update("src/dead.ts").digest("hex")}.lock`);
+    writeFileSync(stalePath, "dead:99999999:1");
+    const result = sweepStaleLocks(runRoot);
+    assert.equal(result.swept, 1);
+    assert.equal(result.live, 1);
+    assert.equal(diskOwnerOf(runRoot, "src/live.ts"), "live");
+    const reclaimed = diskClaimAll({ runRoot, workerId: "fresh", filePaths: ["src/dead.ts"] });
+    assert.equal(reclaimed.ok, true);
   } finally {
     rmSync(runRoot, { recursive: true, force: true });
   }

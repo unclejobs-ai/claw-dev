@@ -11,7 +11,7 @@
  * aborting. releaseAll is idempotent — safe to call from a finally block.
  */
 
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
@@ -28,6 +28,37 @@ function ensureLocksDir(runRoot: string): void {
   mkdirSync(join(runRoot, "locks"), { recursive: true });
 }
 
+function isPidAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "EPERM") return true;
+    return false;
+  }
+}
+
+function reclaimIfStale(runRoot: string, workerId: string, filePath: string, rawHolder: string): { ok: boolean; conflictHolder?: string } {
+  const parts = rawHolder.split(":");
+  const ownerId = parts[0] ?? rawHolder;
+  const ownerPid = Number.parseInt(parts[1] ?? "", 10);
+  if (Number.isFinite(ownerPid) && ownerPid > 0 && !isPidAlive(ownerPid)) {
+    const path = lockPath(runRoot, filePath);
+    try {
+      unlinkSync(path);
+    } catch {
+      /* race with another sweeper — fall through to reclaim attempt */
+    }
+    const fd = openSync(path, "wx");
+    writeFileSync(fd, `${workerId}:${process.pid}:${Date.now()}`);
+    closeSync(fd);
+    return { ok: true };
+  }
+  return { ok: false, conflictHolder: ownerId };
+}
+
 function tryClaimSingle(runRoot: string, workerId: string, filePath: string): { ok: boolean; conflictHolder?: string } {
   const path = lockPath(runRoot, filePath);
   ensureLocksDir(runRoot);
@@ -40,11 +71,36 @@ function tryClaimSingle(runRoot: string, workerId: string, filePath: string): { 
     if (conflictHolder === workerId) {
       return { ok: true };
     }
-    return { ok: false, conflictHolder };
+    return reclaimIfStale(runRoot, workerId, filePath, rawHolder);
   }
   writeFileSync(fd, `${workerId}:${process.pid}:${Date.now()}`);
   closeSync(fd);
   return { ok: true };
+}
+
+export function sweepStaleLocks(runRoot: string): { swept: number; live: number } {
+  const dir = join(runRoot, "locks");
+  if (!existsSync(dir)) return { swept: 0, live: 0 };
+  let swept = 0;
+  let live = 0;
+  for (const entry of readdirSync(dir)) {
+    if (!entry.endsWith(".lock")) continue;
+    const path = join(dir, entry);
+    try {
+      const raw = readFileSync(path, "utf8").trim();
+      const pidStr = raw.split(":")[1];
+      const pid = pidStr ? Number.parseInt(pidStr, 10) : Number.NaN;
+      if (Number.isFinite(pid) && !isPidAlive(pid)) {
+        unlinkSync(path);
+        swept += 1;
+      } else {
+        live += 1;
+      }
+    } catch {
+      /* unreadable lock — leave it alone */
+    }
+  }
+  return { swept, live };
 }
 
 export function diskClaimAll(input: {
