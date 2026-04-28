@@ -15,6 +15,7 @@
     "build": "node -e \"require('node:fs').rmSync('dist-work', { recursive: true, force: true })\" && tsc -b tsconfig.json && tsc -p tsconfig.work.json",
     "test:context-broker": "node --conditions=source --import tsx --test tests/context-broker/*.test.mjs",
     "test:session-store": "node --conditions=source --import tsx --test tests/session-store/*.test.mjs",
+    "test:memory-bus": "node --conditions=source --import tsx --test tests/memory-bus/*.test.mjs",
     "test:providers": "node --conditions=source --import tsx --test tests/providers/*.test.mjs",
     "test:contracts": "node --conditions=source --import tsx --test tests/contracts/*.test.mjs",
     "test:runtime-broker": "node --conditions=source --import tsx --test tests/runtime-broker/*.test.mjs",
