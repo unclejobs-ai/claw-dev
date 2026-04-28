@@ -16,3 +16,23 @@ export type {
 } from "./types.js";
 
 export const SESSION_STORE_DEFAULT_STATE = SESSION_STATES[0];
+
+export {
+  appendTeamCheckpoint,
+  createTeamRun,
+  generateRunId,
+  getRunStatusFromCheckpoints,
+  getTeamRunRoot,
+  getTeamRunsRoot,
+  lockTeamRun,
+  readTeamCheckpoints,
+  readTeamRunManifest,
+  verifyTeamRunChain,
+} from "./team-run-store.js";
+export type {
+  AppendableTeamCheckpoint,
+  ChainVerification,
+  CreateTeamRunInput,
+  TeamCheckpoint,
+  TeamRunRef,
+} from "./team-run-store.js";
