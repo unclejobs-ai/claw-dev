@@ -10,6 +10,7 @@
     { "path": "packages/providers" },
     { "path": "packages/mcp-host" },
     { "path": "packages/memory-bus" },
+    { "path": "packages/snapshot-store" },
     { "path": "packages/orchestrator" },
     { "path": "packages/tui" },
     { "path": "apps/unclecode-cli" }
