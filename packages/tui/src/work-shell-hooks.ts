@@ -163,7 +163,7 @@ export type WorkShellPaneRuntimeState<Reasoning = unknown> = {
 
 export interface WorkShellPaneEngine<State extends WorkShellPaneRuntimeState>
   extends WorkShellStateSource<State> {
-  handleSubmit(line: string): Promise<void>;
+  handleSubmit(line: string, attachments?: readonly unknown[]): Promise<void>;
   openSessionsPanel(): Promise<void>;
   cancelSensitiveInput?(): void;
   closeOverlay?(): void;
@@ -368,6 +368,10 @@ export function useWorkShellPaneState<
   }, []);
   const clearClipboardAttachments = useCallback(() => {
     setPendingClipboardAttachments((current) => (current.length === 0 ? current : []));
+    // The same-reference return on empty avoids triggering a re-render when
+    // the caller's clear racewise no-ops (e.g. submit on a turn that had no
+    // attachments to begin with). Without it the pane re-renders on every
+    // submit even when nothing changed.
   }, []);
   const engineState = useWorkShellEngineState(input.engine);
   const composerPreview = useWorkShellComposerPreview({
@@ -409,8 +413,12 @@ export function useWorkShellPaneState<
   }, [input.engine]);
 
   const handleSubmit = useCallback(
-    (line: string) => input.engine.handleSubmit(line),
-    [input.engine],
+    // Close over the live pending list so paste-derived attachments cross the
+    // engine boundary at submit time. Without this closure, attachments stay
+    // in TUI hook state and the agent never sees them — Hermes review of
+    // commit 40ab895 caught the regression.
+    (line: string) => input.engine.handleSubmit(line, pendingClipboardAttachments),
+    [input.engine, pendingClipboardAttachments],
   );
 
   const cycleMode = useCallback(
@@ -461,13 +469,12 @@ export function useWorkShellPaneState<
 }
 
 /**
- * Identity for an attachment used when merging `resolveComposerInput`
- * output (text-derived attachments) with `pendingAttachments` (clipboard
- * paste, etc). Two attachments are the same payload when their dataUrl is
- * byte-equal — that captures both the source bytes and the mime header
- * without forcing both producer paths to agree on a stable id.
+ * Two attachments are the same payload when their dataUrls are byte-equal —
+ * that captures both the source bytes and the mime header without forcing
+ * both producer paths to agree on a stable id. Exported so tests exercise
+ * the production helper directly instead of byte-copying its body.
  */
-function dedupAttachmentsByDataUrl<A extends { readonly dataUrl: string }>(
+export function dedupAttachmentsByDataUrl<A extends { readonly dataUrl: string }>(
   items: readonly A[],
 ): readonly A[] {
   const seen = new Set<string>();
@@ -522,13 +529,18 @@ export function useWorkShellComposerPreview<Attachment extends { readonly dataUr
 
   // Merge text-derived attachments with clipboard / pending attachments at
   // render time so a paste-then-keystroke sequence does not lose the
-  // pasted image. dataUrl is the canonical dedup key — see helper above.
+  // pasted image. Memoised on (preview, pending) so downstream consumers
+  // keep referential stability between renders that did not change either
+  // input — without it every parent render allocated a new attachments
+  // array and broke any useMemo keyed on the preview shape.
   const pending = input.pendingAttachments;
-  if (!pending || pending.length === 0) {
-    return preview;
-  }
-  return {
-    ...preview,
-    attachments: dedupAttachmentsByDataUrl([...preview.attachments, ...pending]),
-  };
+  return useMemo(() => {
+    if (!pending || pending.length === 0) {
+      return preview;
+    }
+    return {
+      ...preview,
+      attachments: dedupAttachmentsByDataUrl([...preview.attachments, ...pending]),
+    };
+  }, [preview, pending]);
 }

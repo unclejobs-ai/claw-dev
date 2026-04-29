@@ -450,7 +450,17 @@ export class WorkShellEngine<
     this.setState({ panel });
   }
 
-  async handleSubmit(value: string): Promise<void> {
+  /**
+   * Submit the composer value plus any attachments produced outside the
+   * text-resolution path (e.g. clipboard paste). The optional
+   * `pendingAttachments` argument is the seam Hermes review of commit
+   * 40ab895 caught — without it, paste-derived images stayed in TUI hook
+   * state and never reached the provider.
+   */
+  async handleSubmit(
+    value: string,
+    pendingAttachments?: readonly Attachment[],
+  ): Promise<void> {
     const route = resolveWorkShellSubmitRoute({
       value,
       isBusy: this.state.isBusy,
@@ -502,6 +512,9 @@ export class WorkShellEngine<
         await executeWorkShellChatSubmit({
           line: route.line,
           resolveComposerInput: this.resolveComposerInput,
+          ...(pendingAttachments && pendingAttachments.length > 0
+            ? { pendingAttachments }
+            : {}),
           state: this.state,
           options: this.options,
           sessionId: this.sessionId,

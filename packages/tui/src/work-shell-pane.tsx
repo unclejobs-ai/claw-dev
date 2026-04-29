@@ -129,20 +129,23 @@ export function WorkShellPane<
         <Composer
           value={inputValue}
           onChange={setInputValue}
-          onSubmit={(line) => {
-            // Pending clipboard attachments are flushed at submit time so a
-            // paste-then-edit sequence carries the image into the turn but
-            // a submitted turn does not leak attachments back into the next.
-            clearClipboardAttachments();
-            return submit(line);
+          onSubmit={async (line) => {
+            // Run the engine submit FIRST (it closes over the live pending
+            // list, so attachments cross the engine boundary correctly).
+            // Then drop the local pending list — but only when the line had
+            // content. An empty Enter today is a noop in the engine; if we
+            // cleared first the user's paste would silently disappear.
+            // Attachment-only submission (line=="" + attachments) is a
+            // separate dispatch path tracked as a memo §4 follow-up.
+            await submit(line);
+            if (line.trim().length > 0) {
+              clearClipboardAttachments();
+            }
           }}
           onClipboardImage={(attachment) => {
-            // The composer surface is generic over Attachment but in
-            // practice every consumer resolves it to ClipboardImageAttachment
-            // (= WorkShellImageAttachment). The structural shape is
-            // identical; cast at the seam keeps the generic constraint
-            // honest without leaking ClipboardImageAttachment names into
-            // every caller.
+            // ClipboardImageAttachment is byte-identical to the project-wide
+            // WorkShellImageAttachment alias from contracts. Cast at this
+            // seam keeps the generic constraint honest.
             addClipboardAttachment(attachment as Attachment);
           }}
           {...(isSecureApiKeyEntry ? { mask: "•" } : {})}

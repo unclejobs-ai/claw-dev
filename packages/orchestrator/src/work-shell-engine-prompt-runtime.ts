@@ -12,6 +12,36 @@ import type {
 } from "./work-shell-engine.js";
 import type { WorkShellReasoningConfig } from "./reasoning.js";
 
+/**
+ * Merge text-derived attachments (from resolveComposerInput) with attachments
+ * produced outside the text-resolution path (e.g. clipboard paste). Dedupes
+ * by `dataUrl` when the attachment has one — that key captures the source
+ * bytes plus the mime header without forcing both producer paths to agree
+ * on a stable id. Attachments without a dataUrl pass through unchanged so
+ * non-image attachment kinds added later are not silently dropped.
+ */
+export function mergeWorkShellComposerAttachments<Attachment>(
+  resolved: WorkShellComposerResolution<Attachment>,
+  pending: readonly Attachment[] | undefined,
+): WorkShellComposerResolution<Attachment> {
+  if (!pending || pending.length === 0) {
+    return resolved;
+  }
+  const seen = new Set<string>();
+  const out: Attachment[] = [];
+  for (const item of [...resolved.attachments, ...pending]) {
+    const key = (item as { readonly dataUrl?: string }).dataUrl;
+    if (typeof key === "string") {
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+    }
+    out.push(item);
+  }
+  return { ...resolved, attachments: out };
+}
+
 type PromptRuntimeInput<Attachment, Reasoning extends WorkShellReasoningConfig> = {
   state: WorkShellEngineState<Reasoning>;
   options: WorkShellEngineOptions<Reasoning>;
@@ -103,8 +133,16 @@ export async function executeWorkShellChatSubmit<
 >(input: {
   line: string;
   resolveComposerInput: (value: string, cwd: string) => Promise<WorkShellComposerResolution<Attachment>>;
+  // Attachments produced outside the text-resolution path (e.g. clipboard
+  // paste in the TUI). Merged with text-derived attachments so the user's
+  // pasted image actually reaches the provider, not just the preview badge.
+  // Memo §4 step 2 follow-up after Hermes review of commit 40ab895 caught
+  // that pendingClipboardAttachments lived only in TUI hook state and
+  // never crossed the engine boundary.
+  pendingAttachments?: readonly Attachment[];
 } & PromptRuntimeInput<Attachment, Reasoning>): Promise<void> {
-  const composer = await input.resolveComposerInput(input.line, input.options.cwd);
+  const resolved = await input.resolveComposerInput(input.line, input.options.cwd);
+  const composer = mergeWorkShellComposerAttachments(resolved, input.pendingAttachments);
   const promptTurn = WorkShellTurns.createChatPromptTurnInput({
     line: input.line,
     composer,

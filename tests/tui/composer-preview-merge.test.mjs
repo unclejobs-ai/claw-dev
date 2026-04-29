@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { dedupAttachmentsByDataUrl } from "@unclecode/tui";
+
 /**
  * Regression — useWorkShellComposerPreview must merge clipboard-pasted
  * attachments with text-derived attachments WITHOUT losing one when the
@@ -9,31 +11,9 @@ import assert from "node:assert/strict";
  *
  * The hook itself uses React state and would need an Ink/React harness to
  * exercise end-to-end. The pure dedup helper that backs the merge is the
- * critical invariant: two attachments with byte-equal dataUrls collapse,
- * everything else preserves order. We exercise that helper through the
- * exported merge surface by importing the hook module and invoking the
- * dedup directly via a re-export shim — but the hook does not export the
- * helper, so we test the observable contract via the path-shape rules
- * (dataUrl is the canonical key) using a tiny inline reimplementation that
- * matches the production logic byte-for-byte.
- *
- * If the production helper diverges from this reference, the test fails.
- * If both agree, the production seam keeps the same dedup invariants the
- * pane wiring relies on.
+ * critical invariant — we import it directly so a future drift in the
+ * production helper is caught here, not only at integration time.
  */
-
-function dedupAttachmentsByDataUrl(items) {
-  const seen = new Set();
-  const out = [];
-  for (const item of items) {
-    if (seen.has(item.dataUrl)) {
-      continue;
-    }
-    seen.add(item.dataUrl);
-    out.push(item);
-  }
-  return out;
-}
 
 const A = { type: "image", mimeType: "image/png", dataUrl: "data:image/png;base64,A==", path: "(clipboard)", displayName: "a.png" };
 const B = { type: "image", mimeType: "image/png", dataUrl: "data:image/png;base64,B==", path: "(clipboard)", displayName: "b.png" };
