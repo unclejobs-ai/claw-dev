@@ -1,10 +1,13 @@
-export type WorkShellImageAttachment = {
-  readonly type: "image";
-  readonly mimeType: string;
-  readonly dataUrl: string;
-  readonly path: string;
-  readonly displayName: string;
-};
+import type { ClipboardImageAttachment } from "@unclecode/contracts";
+
+/**
+ * The TUI image attachment payload is structurally identical to the
+ * canonical ClipboardImageAttachment exported from @unclecode/contracts.
+ * Aliased so the TUI keeps its existing type name while the underlying
+ * shape stays single-sourced for providers and the orchestrator clipboard
+ * capture utility.
+ */
+export type WorkShellImageAttachment = ClipboardImageAttachment;
 
 function base64Name(value: string): string {
   return Buffer.from(value, "utf8").toString("base64");

@@ -1,7 +1,17 @@
+import {
+  captureClipboardImage as defaultCaptureClipboardImage,
+  type ClipboardImageAttachment,
+  type ClipboardImageResult,
+} from "@unclecode/orchestrator";
 import { Box, Text, useInput } from "ink";
 import { useEffect, useRef, useState } from "react";
 
 import { getDisplayWidth } from "./text-width.js";
+
+// `ClipboardImageResult` is re-exported only because it is part of
+// `handleComposerClipboardPaste`'s public signature (an internal test seam).
+// Composer itself never receives a result type from props anymore.
+export type { ClipboardImageResult };
 
 const COMPOSER_PASTE_THRESHOLD = 48;
 const PASTE_SETTLE_MS = 120;
@@ -167,6 +177,33 @@ function getComposerVisibleWidth(): number {
   return Math.max(12, Math.min(COMPOSER_DEFAULT_VISIBLE_WIDTH, terminalColumns - 10));
 }
 
+/**
+ * Pure handler for the Ctrl+V branch — extracted so unit tests can exercise
+ * the routing without mounting an Ink component. Returns "handled" when an
+ * image was captured (caller should skip default text-paste handling) and
+ * "fallthrough" otherwise so the existing text path keeps working.
+ */
+export function handleComposerClipboardPaste(input: {
+  readonly capture: () => ClipboardImageResult;
+  readonly onClipboardImage?:
+    | ((attachment: ClipboardImageAttachment) => void)
+    | undefined;
+  readonly onClipboardImageError?:
+    | ((reason: string, status: "no-image" | "unsupported" | "failed") => void)
+    | undefined;
+}): "handled" | "fallthrough" {
+  if (!input.onClipboardImage) {
+    return "fallthrough";
+  }
+  const result = input.capture();
+  if (result.status === "ok") {
+    input.onClipboardImage(result.attachment);
+    return "handled";
+  }
+  input.onClipboardImageError?.(result.reason, result.status);
+  return "fallthrough";
+}
+
 function renderComposerLine(line: string, cursorColumn: number | undefined): React.ReactNode {
   const visibleWidth = getComposerVisibleWidth();
   if (cursorColumn === undefined) {
@@ -203,6 +240,12 @@ export function Composer(props: {
   readonly onSubmit: (value: string) => void | Promise<void>;
   readonly onPaste?: ((text: string) => void) | undefined;
   readonly onIsPastingChange?: ((isPasting: boolean) => void) | undefined;
+  readonly onClipboardImage?:
+    | ((attachment: ClipboardImageAttachment) => void)
+    | undefined;
+  readonly onClipboardImageError?:
+    | ((reason: string, status: "no-image" | "unsupported" | "failed") => void)
+    | undefined;
   readonly mask?: string | undefined;
 }) {
   const [isPasting, setIsPasting] = useState(false);
@@ -250,6 +293,22 @@ export function Composer(props: {
       (key.ctrl && input === "c")
     ) {
       return;
+    }
+
+    // Ctrl+V: try to capture an image from the OS clipboard. On success the
+    // attachment is routed to the parent via onClipboardImage; on any other
+    // status (no-image, unsupported, failed) we fall through to default
+    // text-paste handling so terminals still pasting text via Ctrl+V keep
+    // working unchanged.
+    if (key.ctrl && input === "v") {
+      const outcome = handleComposerClipboardPaste({
+        capture: defaultCaptureClipboardImage,
+        onClipboardImage: props.onClipboardImage,
+        onClipboardImageError: props.onClipboardImageError,
+      });
+      if (outcome === "handled") {
+        return;
+      }
     }
 
     const result = applyComposerEdit({

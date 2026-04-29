@@ -13,24 +13,29 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir, platform } from "node:os";
 import { join } from "node:path";
 
-export type ClipboardImageAttachment = {
-  readonly type: "image";
-  readonly mimeType: string;
-  readonly dataUrl: string;
-  readonly path: string;
-  readonly displayName: string;
-};
+import type {
+  ClipboardImageAttachment,
+  ClipboardImageError,
+  ClipboardImageResult,
+} from "@unclecode/contracts";
 
-export type ClipboardImageError = {
-  readonly status: "no-image" | "unsupported" | "failed";
-  readonly reason: string;
+export type {
+  ClipboardImageAttachment,
+  ClipboardImageError,
+  ClipboardImageResult,
 };
-
-export type ClipboardImageResult =
-  | { readonly status: "ok"; readonly attachment: ClipboardImageAttachment }
-  | ClipboardImageError;
 
 const TARGET_MIME = "image/png";
+
+/**
+ * Sentinel returned in the `path` field of every successful capture. The
+ * temp file used to materialise PNG bytes is removed before return on macOS
+ * and Windows, and Linux never produces a stable path (xclip streams via
+ * stdout). Consumers must read bytes from `dataUrl`, not from `path`. The
+ * sentinel is kept stable across platforms so downstream code never
+ * interprets it as a real filesystem reference.
+ */
+const CLIPBOARD_PATH_SENTINEL = "(clipboard)";
 
 function captureMacOs(): ClipboardImageResult {
   const dir = mkdtempSync(join(tmpdir(), "uc-clip-"));
@@ -78,7 +83,7 @@ function captureMacOs(): ClipboardImageResult {
       type: "image",
       mimeType: TARGET_MIME,
       dataUrl: `data:${TARGET_MIME};base64,${bytes.toString("base64")}`,
-      path,
+      path: CLIPBOARD_PATH_SENTINEL,
       displayName: "clipboard.png",
     },
   };
@@ -99,7 +104,7 @@ function captureLinux(): ClipboardImageResult {
         type: "image",
         mimeType: TARGET_MIME,
         dataUrl: `data:${TARGET_MIME};base64,${bytes.toString("base64")}`,
-        path: "(xclip)",
+        path: CLIPBOARD_PATH_SENTINEL,
         displayName: "clipboard.png",
       },
     };
@@ -136,7 +141,7 @@ function captureWindows(): ClipboardImageResult {
       type: "image",
       mimeType: TARGET_MIME,
       dataUrl: `data:${TARGET_MIME};base64,${bytes.toString("base64")}`,
-      path,
+      path: CLIPBOARD_PATH_SENTINEL,
       displayName: "clipboard.png",
     },
   };

@@ -14,3 +14,4 @@ export * from "./ssot.js";
 export * from "./mini-loop.js";
 export * from "./team.js";
 export * from "./memory.js";
+export * from "./attachments.js";
