@@ -96,3 +96,42 @@ test("assertWithinWorkspace with allowMissing rejects deep traversal mixed with 
     rmSync(target, { recursive: true, force: true });
   }
 });
+
+test("assertWithinWorkspace normalises NFD candidate paths to NFC", () => {
+  // Q28 / Kimi review of 5e9e66e. Linux ext4 is byte-oriented, so an
+  // NFD-encoded candidate to a not-yet-existing leaf must collapse to
+  // its NFC form before the containment check, otherwise an attacker
+  // who can place an NFC-named symlink in the workspace could bypass
+  // the byte-equality compare on the parent walk.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uc-containment-nfc-")));
+  try {
+    mkdirSync(join(root, "café"), { recursive: true });
+    // "café" composed (NFC) — single codepoint U+00E9 — should resolve
+    // against the existing dir even when the candidate arrives in NFD
+    // form ("cafe" + U+0301).
+    const nfd = "café/new-file.txt";
+    const resolved = assertWithinWorkspace(root, nfd, { allowMissing: true });
+    assert.equal(
+      resolved,
+      join(root, "café", "new-file.txt").normalize("NFC"),
+      "NFD candidate must resolve to the NFC canonical path inside the workspace",
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("assertWithinWorkspace accepts ASCII candidates unchanged after NFC normalisation", () => {
+  // Sanity check: ASCII paths are byte-identical under NFC, so the new
+  // normalize step must not alter them.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "uc-containment-ascii-")));
+  try {
+    mkdirSync(join(root, "real-subdir"), { recursive: true });
+    const resolved = assertWithinWorkspace(root, "real-subdir/file.txt", {
+      allowMissing: true,
+    });
+    assert.equal(resolved, join(root, "real-subdir", "file.txt"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

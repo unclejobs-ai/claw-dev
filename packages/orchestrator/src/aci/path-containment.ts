@@ -107,9 +107,19 @@ export function assertWithinWorkspace(
   if (candidatePath.includes("\0")) {
     throw new PathContainmentError("path contains NUL byte", candidatePath, workspaceRoot);
   }
+  // Unicode normalisation guard. On Linux ext4 (byte-oriented filesystem),
+  // an NFD-encoded candidate to a non-existent leaf could resolve against
+  // a differently-normalised existing symlink ancestor and slip past
+  // containment. Normalise only the *candidate* path — never realpath
+  // outputs or workspaceRoot, since those are filesystem truth and
+  // collapsing byte-distinct names would compare strings that do not
+  // match the actual on-disk inodes. Downstream writes must use the
+  // returned path so the normalised form is the one persisted.
+  // Kimi review of commit 5e9e66e flagged this gap.
+  const normalizedCandidate = candidatePath.normalize("NFC");
   const allowMissing = options.allowMissing ?? false;
   const rootCanonical = canonical(resolve(workspaceRoot), false);
-  const resolved = resolve(rootCanonical, candidatePath);
+  const resolved = resolve(rootCanonical, normalizedCandidate);
   const resolvedCanonical = canonical(resolved, allowMissing);
   const rel = relative(rootCanonical, resolvedCanonical);
   if (rel.startsWith("..") || isAbsolute(rel)) {
@@ -121,8 +131,8 @@ export function assertWithinWorkspace(
   }
   if (rel.length > 0 && rel.split(sep).some((segment) => segment === "..")) {
     throw new PathContainmentError(
-      `path contains traversal segment: ${candidatePath}`,
-      candidatePath,
+      `path contains traversal segment: ${normalizedCandidate}`,
+      normalizedCandidate,
       workspaceRoot,
     );
   }
