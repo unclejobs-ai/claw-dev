@@ -251,6 +251,83 @@ test("createTeamMiniLoopExecutor refuses workspace-escape writes", async () => {
   }
 });
 
+const SYMLINKS_REQUIRE_ELEVATION = process.platform === "win32";
+
+test(
+  "createTeamMiniLoopExecutor refuses writes to a workspace-internal symlink targeting outside",
+  { skip: SYMLINKS_REQUIRE_ELEVATION },
+  async () => {
+    // Q27 / system-level regression for the allowMissing symlink-parent
+    // escape patched in commit 5e9e66e. Unit tests on canonical() proved
+    // the helper resolves the parent symlink; this test proves the
+    // attack chain through the public dispatch surface is closed: a
+    // model that places a symlink inside the workspace must NOT be able
+    // to write outside via a not-yet-existing leaf under that symlink.
+    const { mkdtempSync, rmSync, symlinkSync, existsSync, realpathSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = (await import("node:path")).default;
+    // Canonicalise both root and target so macOS /var → /private/var
+    // does not satisfy a partial-string assertion accidentally.
+    const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "unclecode-exec-symlink-")));
+    const target = realpathSync(mkdtempSync(path.join(tmpdir(), "unclecode-exec-symlink-target-")));
+    symlinkSync(target, path.join(dir, "escape-link"));
+    try {
+      const executor = createTeamMiniLoopExecutor();
+      const observation = await executor.execute(
+        {
+          tool: "write_file",
+          input: { path: "escape-link/foo.txt", contents: "should-be-blocked" },
+        },
+        dir,
+      );
+      assert.equal(observation.exitCode, -1);
+      assert.match(
+        observation.stderr,
+        /escapes workspace|PathContainmentError|escape-link/,
+      );
+      assert.equal(
+        existsSync(path.join(target, "foo.txt")),
+        false,
+        "write must not have crossed the symlink to the outside target",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(target, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "createTeamMiniLoopExecutor refuses writes to a deeper non-existent path under a symlink",
+  { skip: SYMLINKS_REQUIRE_ELEVATION },
+  async () => {
+    // The closest-existing-ancestor walk in canonical() must follow the
+    // symlink for any depth of missing leaf, not only the immediate
+    // child. This case probes a deeper miss to lock the invariant in.
+    const { mkdtempSync, rmSync, symlinkSync, existsSync, realpathSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const path = (await import("node:path")).default;
+    const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "unclecode-exec-symlink-deep-")));
+    const target = realpathSync(mkdtempSync(path.join(tmpdir(), "unclecode-exec-symlink-deep-target-")));
+    symlinkSync(target, path.join(dir, "escape-link"));
+    try {
+      const executor = createTeamMiniLoopExecutor();
+      const observation = await executor.execute(
+        {
+          tool: "write_file",
+          input: { path: "escape-link/sub/deeper/foo.txt", contents: "should-be-blocked" },
+        },
+        dir,
+      );
+      assert.equal(observation.exitCode, -1);
+      assert.equal(existsSync(path.join(target, "sub", "deeper", "foo.txt")), false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(target, { recursive: true, force: true });
+    }
+  },
+);
+
 test("createTeamMiniLoopExecutor returns ripgrep hits for search_text", async () => {
   const { writeFileSync, mkdtempSync, rmSync } = await import("node:fs");
   const { tmpdir } = await import("node:os");

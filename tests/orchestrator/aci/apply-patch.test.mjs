@@ -46,3 +46,39 @@ test("applyPatch rejects mismatched hunk", () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+const SYMLINKS_REQUIRE_ELEVATION = process.platform === "win32";
+
+test(
+  "applyPatch rejects writes to a workspace-internal symlink targeting outside",
+  { skip: SYMLINKS_REQUIRE_ELEVATION },
+  async () => {
+    // Q27 / system-level regression for the allowMissing symlink-parent
+    // escape patched in commit 5e9e66e. apply-patch.ts:107 shares the
+    // `allowMissing:true` sink with team-mini-loop write_file, so this
+    // test pins the same invariant for the patch dispatch surface.
+    const { symlinkSync, existsSync, realpathSync } = await import("node:fs");
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), "uc-patch-symlink-")));
+    const target = realpathSync(mkdtempSync(join(tmpdir(), "uc-patch-symlink-target-")));
+    symlinkSync(target, join(dir, "escape-link"));
+    try {
+      const patch =
+        "--- a/escape-link/foo.txt\n+++ b/escape-link/foo.txt\n@@ -0,0 +1 @@\n+pwned\n";
+      const result = applyPatch({ cwd: dir, patch });
+      assert.equal(result.applied.length, 0);
+      assert.equal(result.rejected.length, 1);
+      assert.match(
+        result.rejected[0].reason,
+        /escapes workspace|escape-link/,
+      );
+      assert.equal(
+        existsSync(join(target, "foo.txt")),
+        false,
+        "apply_patch must not have crossed the symlink to the outside target",
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+      rmSync(target, { recursive: true, force: true });
+    }
+  },
+);
