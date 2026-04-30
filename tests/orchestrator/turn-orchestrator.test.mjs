@@ -311,3 +311,64 @@ test("createTurnOrchestrator suppresses planner step trace when planning skipped
     "turn-span completed event must close the bracket exactly once",
   );
 });
+
+test("createTurnOrchestrator hands the trace listener into planComplexTurn for live progress", async () => {
+  // Q29 — Hermes/Codex review of c91cd24 found the planner running and
+  // completed events fired in the same tick. Option C plumbs the
+  // listener INTO the planner so it emits running ITSELF when the LLM
+  // call begins. This test pins the new dependency contract.
+  const traces = [];
+  let observedListenerInside = false;
+  const orchestrator = createTurnOrchestrator({
+    async runSimpleTurn(prompt) {
+      return { text: `simple:${prompt}` };
+    },
+    async runResearchTurn(prompt) {
+      return { text: `research:${prompt}` };
+    },
+    async planComplexTurn(prompt, options) {
+      observedListenerInside = typeof options?.onTrace === "function";
+      // Mirror the production planner: emit running before the imaginary
+      // LLM call, then return usedLlm:true so the orchestrator emits the
+      // matching completed event after we resolve.
+      options?.onTrace?.({
+        type: "orchestrator.step",
+        level: "high-signal",
+        stepId: "planner-PLANNER",
+        role: "planner",
+        kind: "agent-step",
+        status: "running",
+        summary: `Planning: ${prompt}`,
+        startedAt: 1,
+      });
+      return {
+        tasks: [
+          { id: "task-1", summary: "First", writePaths: [] },
+          { id: "task-2", summary: "Second", writePaths: [] },
+        ],
+        usedLlm: true,
+      };
+    },
+    async executeComplexTask(task) {
+      return { id: task.id, summary: `done:${task.summary}` };
+    },
+  });
+
+  await orchestrator.run({
+    prompt: "refactor login.ts oauth.ts",
+    mode: "ultrawork",
+    onTrace(event) {
+      traces.push(event);
+    },
+  });
+
+  assert.equal(observedListenerInside, true, "planComplexTurn must receive the orchestrator's onTrace listener");
+  const plannerRunning = traces.filter(
+    (event) => event.role === "planner" && event.status === "running",
+  );
+  const plannerCompleted = traces.filter(
+    (event) => event.role === "planner" && event.status === "completed",
+  );
+  assert.equal(plannerRunning.length, 1, "planner running must fire exactly once (from inside planComplexTurn)");
+  assert.equal(plannerCompleted.length, 1, "planner completed must fire exactly once (from the orchestrator after await)");
+});

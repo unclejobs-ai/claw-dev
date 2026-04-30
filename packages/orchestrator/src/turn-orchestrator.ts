@@ -144,6 +144,7 @@ export function createTurnOrchestrator<Task extends ComplexPlanTask, Result>(dep
   readonly runResearchTurn: (prompt: string) => Promise<{ text: string }>;
   readonly planComplexTurn: (
     prompt: string,
+    options?: { readonly onTrace?: TurnOrchestratorTraceListener | undefined },
   ) => Promise<{ readonly tasks: readonly Task[]; readonly usedLlm: boolean }>;
   readonly executeComplexTask: (task: Task) => Promise<Result>;
   readonly runGuardianReview?: ((input: {
@@ -198,28 +199,26 @@ export function createTurnOrchestrator<Task extends ComplexPlanTask, Result>(dep
       // planner role would mislead consumers about the engine's capabilities.
       // See docs/specs/2026-04-05-unclecode-tui-orchestration-redesign.md §Phase 0.
       //
-      // Live-progress nuance: because the orchestrator only knows `usedLlm`
-      // after `planComplexTurn` resolves, the `running` and `completed` events
-      // here fire in the same tick — UIs rendering a spinner for slow LLM
-      // planning will not see an intermediate state. A follow-up refactor
-      // should let the planner implementation emit `running` itself (e.g. by
-      // accepting a trace listener), but that touches the dependency contract
-      // and is out of scope for this Phase 0 cleanup.
+      // Live-progress: planComplexTurn now receives an onTrace listener and
+      // emits the planner running event ITSELF when it actually invokes the
+      // LLM (work-agent.ts planTasks). This is option C from Hermes review
+      // of c91cd24's Codex S3 finding — the only honest event model: the
+      // running event fires when the LLM call begins, not optimistically
+      // before await. The orchestrator emits the completed/failed bracket
+      // after planComplexTurn resolves, with usedLlm:false suppressing the
+      // entire bracket so static plans stay invisible (the running event
+      // only fires when the planner itself decided to invoke an LLM).
       const plannerStartedAt = Date.now();
-      const planOutcome = await deps.planComplexTurn(input.prompt);
+      const planOutcome = await deps.planComplexTurn(input.prompt, {
+        onTrace: input.onTrace,
+      });
       const tasks = planOutcome.tasks;
       const plannerCompletedAt = Date.now();
       if (planOutcome.usedLlm) {
-        input.onTrace?.({
-          type: "orchestrator.step",
-          level: "high-signal",
-          stepId: `planner-${plannerStartedAt}`,
-          role: "planner",
-          kind: "agent-step",
-          status: "running",
-          summary: `Planning: ${input.prompt}`,
-          startedAt: plannerStartedAt,
-        });
+        // Pair the running event the planner already emitted with a
+        // matching completed event keyed on the same step id. Step ids
+        // use the orchestrator-side timestamp so consumers can rely on
+        // matching pairs without seeing the planner's internal clock.
         input.onTrace?.({
           type: "orchestrator.step",
           level: "high-signal",

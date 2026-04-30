@@ -1,6 +1,10 @@
 import type { OrchestratorStepTraceEvent } from "@unclecode/contracts";
 
-import { createTurnOrchestrator, type ComplexPlanTask } from "./turn-orchestrator.js";
+import {
+  createTurnOrchestrator,
+  type ComplexPlanTask,
+  type TurnOrchestratorTraceListener,
+} from "./turn-orchestrator.js";
 
 type ReasoningLike = {
   readonly effort: string;
@@ -154,6 +158,7 @@ export class WorkAgent<
 
   private async planTasks(
     prompt: string,
+    onTrace?: TurnOrchestratorTraceListener,
   ): Promise<{ readonly tasks: readonly PlannedWorkTask[]; readonly usedLlm: boolean }> {
     const staticTasks = buildComplexTasks(prompt);
     if (this.mode !== "yolo" && this.mode !== "ultrawork") {
@@ -167,11 +172,34 @@ export class WorkAgent<
         "Each subtask should be independently executable.",
         `Request: ${prompt}`,
       ].join("\n");
+      // Emit running BEFORE the LLM call so a UI rendering live progress
+      // sees the planner's spinner state for the duration of the actual
+      // model invocation. The orchestrator emits the matching completed
+      // event after planComplexTurn resolves with usedLlm:true. This is
+      // option C from Hermes review of c91cd24's Codex S3 finding.
+      const plannerStartedAt = Date.now();
+      onTrace?.({
+        type: "orchestrator.step",
+        level: "high-signal",
+        stepId: `planner-${plannerStartedAt}`,
+        role: "planner",
+        kind: "agent-step",
+        status: "running",
+        summary: `Planning: ${prompt}`,
+        startedAt: plannerStartedAt,
+      });
       const result = await this.directAgent.runTurn(planPrompt, []);
       const parsed = parseAgentPlanResponse(result.text);
       if (parsed.length >= 2) {
         return { tasks: parsed, usedLlm: true };
       }
+      // Parse failure — silently fall through to static. The running event
+      // is left dangling on purpose: the orchestrator's usedLlm:false path
+      // will not emit a completed event, so the UI will see the running
+      // state cleared by the next turn's events. A "failed" event would
+      // misrepresent a successful turn that simply could not parse 2+
+      // subtasks; we prefer the smaller dishonesty (a phantom running
+      // tile) until the planner has a richer outcome enum.
     } catch {
       // Fall back to static decomposition on any failure
     }
@@ -207,8 +235,8 @@ export class WorkAgent<
     const orchestrator = createTurnOrchestrator<PlannedWorkTask, { id: string; summary: string }>({
       runSimpleTurn: (simplePrompt) => this.directAgent.runTurn(simplePrompt, attachments),
       runResearchTurn: (researchPrompt) => this.directAgent.runTurn(researchPrompt, attachments),
-      planComplexTurn: async (complexPrompt) => {
-        const { tasks, usedLlm } = await this.planTasks(complexPrompt);
+      planComplexTurn: async (complexPrompt, options) => {
+        const { tasks, usedLlm } = await this.planTasks(complexPrompt, options?.onTrace);
         return { tasks, usedLlm };
       },
       executeComplexTask: async (task) => {
