@@ -2,6 +2,10 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
 import type { ClipboardImageAttachment } from "@unclecode/contracts";
+import {
+  CONFIG_CORE_DEFAULT_MAX_CLIPBOARD_ATTACHMENT_BYTES as MAX_TEXT_ATTACHMENT_BYTES,
+  CONFIG_CORE_DEFAULT_MAX_CLIPBOARD_ATTACHMENT_COUNT as MAX_TEXT_ATTACHMENT_COUNT,
+} from "@unclecode/config-core";
 
 import type { WorkShellComposerResolution } from "./work-shell-engine.js";
 
@@ -28,18 +32,6 @@ const IMAGE_PATH_PATTERN =
 const REFERENCE_PATH_PATTERN = /(?:^|\s)@(?:"([^"\n]+)"|(\S+))/g;
 const MAX_TEXT_REFERENCE_CHARS = 2_000;
 const MAX_DIRECTORY_ENTRIES = 12;
-
-/**
- * Pre-flight caps for text-derived image attachments. Mirrors the TUI
- * clipboard constants in work-shell-hooks.ts. The clipboard path is
- * capped at the hook layer; this applies the same ceiling to images
- * referenced via bare paths or @file references in the composer text.
- * Hermes review flagged this as a larger long-tail risk than the
- * already-capped clipboard path — a long prompt referencing 50 image
- * paths would read + base64 all of them into memory unbounded.
- */
-const MAX_TEXT_ATTACHMENT_COUNT = 5;
-const MAX_TEXT_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
 async function toImageAttachment(
   candidatePath: string,

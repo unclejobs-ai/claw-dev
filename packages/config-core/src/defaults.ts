@@ -21,6 +21,15 @@ export const CONFIG_SOURCE_ORDER = [
 export const CONFIG_CORE_DEFAULT_MODE_PROFILE = MODE_PROFILES.default.id;
 export const CONFIG_CORE_DEFAULT_MODEL = "claude-sonnet-4-20250514";
 
+/**
+ * v1 composer attachment caps — mirrored by provider and orchestrator
+ * defensive layers. Users can override via project/user config JSON,
+ * env vars, CLI flags, or session overrides through the standard
+ * config-core resolution chain.
+ */
+export const CONFIG_CORE_DEFAULT_MAX_CLIPBOARD_ATTACHMENT_COUNT = 5;
+export const CONFIG_CORE_DEFAULT_MAX_CLIPBOARD_ATTACHMENT_BYTES = 5 * 1024 * 1024;
+
 export const CONFIG_CORE_DEFAULTS: UncleCodeConfigLayer = {
   mode: CONFIG_CORE_DEFAULT_MODE_PROFILE,
   model: CONFIG_CORE_DEFAULT_MODEL,
@@ -35,6 +44,10 @@ export const CONFIG_CORE_DEFAULTS: UncleCodeConfigLayer = {
         body: "Prefer concrete evidence, preserve source precedence, and explain where final values came from.",
       },
     },
+  },
+  composer: {
+    maxClipboardAttachmentCount: CONFIG_CORE_DEFAULT_MAX_CLIPBOARD_ATTACHMENT_COUNT,
+    maxClipboardAttachmentBytes: CONFIG_CORE_DEFAULT_MAX_CLIPBOARD_ATTACHMENT_BYTES,
   },
 };
 

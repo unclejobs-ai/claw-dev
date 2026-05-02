@@ -35,8 +35,8 @@ export type ProviderToolTraceEvent = Extract<
 export type ProviderInputAttachment = ClipboardImageAttachment;
 
 /**
- * Provider-layer defensive attachment caps. Mirrors the TUI constants
- * in work-shell-hooks.ts (§ MAX_CLIPBOARD_ATTACHMENT_COUNT / _BYTES).
+ * Provider-layer defensive attachment caps — canonical values live in
+ * packages/config-core/src/defaults.ts (CONFIG_CORE_DEFAULT_MAX_CLIPBOARD_*).
  * The TUI cap is the primary UX gate; this provider backstop silently
  * drops excess so that the merged attachment list from resolveComposerInput
  * + clipboard cannot escape the process unbounded (Gemini design memo Q4).

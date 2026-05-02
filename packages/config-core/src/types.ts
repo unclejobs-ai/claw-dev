@@ -39,6 +39,10 @@ export type UncleCodeConfigLayer = {
   readonly prompt?: {
     readonly sections?: Readonly<Record<string, UncleCodePromptSection | null>>;
   };
+  readonly composer?: {
+    readonly maxClipboardAttachmentCount?: number;
+    readonly maxClipboardAttachmentBytes?: number;
+  };
 };
 
 export type UncleCodeNamedOverlay = {

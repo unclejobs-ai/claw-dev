@@ -548,13 +548,11 @@ export function useWorkShellPaneState<
 }
 
 /**
- * Pre-flight cap defaults. v1 keeps these inline here — Gemini's design
- * memo recommends promoting them to packages/config-core under a new
- * `composer` subkey of UncleCodeConfigLayer so the precedence chain
- * (built-in → plugin → project → user → env → cli → session) can override.
- * Tracked as memo §4 follow-up; for v1 the constants below match the
- * Anthropic vision per-image limit (5 MiB) and a TUI-friendly count
- * ceiling that prevents runaway clipboard accumulation.
+ * Pre-flight cap defaults — canonical values live in
+ * packages/config-core/src/defaults.ts (CONFIG_CORE_DEFAULT_MAX_CLIPBOARD_*).
+ * These re-exports keep the TUI public API stable while the config-core
+ * resolution chain (built-in → plugin → project → user → env → cli →
+ * session) matures.
  */
 export const MAX_CLIPBOARD_ATTACHMENT_COUNT = 5;
 export const MAX_CLIPBOARD_ATTACHMENT_BYTES = 5 * 1024 * 1024;
