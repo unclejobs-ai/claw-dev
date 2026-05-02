@@ -29,6 +29,55 @@ test("openAICompatibleMessagesToResponsesInput converts assistant tool history",
   ]);
 });
 
+test("openAICompatibleMessagesToResponsesInput preserves image_url parts as input_image blocks", () => {
+  const input = openAICompatibleMessagesToResponsesInput([
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "What is in this screenshot?" },
+        { type: "image_url", image_url: { url: "data:image/png;base64,abc123" } },
+      ],
+    },
+  ]);
+
+  assert.deepEqual(input, [
+    {
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "What is in this screenshot?" },
+        { type: "input_image", image_url: "data:image/png;base64,abc123" },
+      ],
+    },
+  ]);
+});
+
+test("openAICompatibleMessagesToResponsesInput skips empty text and malformed image parts", () => {
+  const input = openAICompatibleMessagesToResponsesInput([
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "" },
+        { type: "text", text: "valid text" },
+        { type: "image_url", image_url: null },
+        { type: "image_url", image_url: { url: "data:image/png;base64,def456" } },
+        { type: "image_url" },
+      ],
+    },
+  ]);
+
+  assert.deepEqual(input, [
+    {
+      type: "message",
+      role: "user",
+      content: [
+        { type: "input_text", text: "valid text" },
+        { type: "input_image", image_url: "data:image/png;base64,def456" },
+      ],
+    },
+  ]);
+});
+
 test("openAICompatibleToolsToResponsesTools flattens function tools", () => {
   const tools = openAICompatibleToolsToResponsesTools([
     {

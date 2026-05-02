@@ -1285,17 +1285,26 @@ function openAICompatibleMessagesToResponsesInput(messages: readonly OpenAIMessa
         content: [{ type: "output_text", text: message.content }],
       });
     } else if (message.role === "user") {
-      const text = typeof message.content === "string"
-        ? message.content
-        : message.content
-          .filter((part): part is { type: "text"; text: string } => part.type === "text")
-          .map((part) => part.text)
-          .join("\n");
-      if (text.length > 0) {
+      const contentBlocks: Array<Record<string, unknown>> = [];
+      if (typeof message.content === "string") {
+        if (message.content.length > 0) {
+          contentBlocks.push({ type: "input_text", text: message.content });
+        }
+      } else if (Array.isArray(message.content)) {
+        for (const part of message.content) {
+          if (!isRecord(part)) continue;
+          if (part.type === "text" && typeof part.text === "string" && part.text.length > 0) {
+            contentBlocks.push({ type: "input_text", text: part.text });
+          } else if (part.type === "image_url" && isRecord(part.image_url) && typeof part.image_url.url === "string") {
+            contentBlocks.push({ type: "input_image", image_url: part.image_url.url });
+          }
+        }
+      }
+      if (contentBlocks.length > 0) {
         input.push({
           type: "message",
           role: "user",
-          content: [{ type: "input_text", text }],
+          content: contentBlocks,
         });
       }
     }

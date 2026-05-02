@@ -9,29 +9,49 @@ export function openAICompatibleMessagesToResponsesInput(messages) {
     }
 
     const role = typeof message.role === "string" ? message.role : "user";
-    const content = typeof message.content === "string" ? message.content : "";
 
     if (role === "tool") {
+      const toolContent = typeof message.content === "string" ? message.content : "";
       input.push({
         type: "function_call_output",
         call_id: typeof message.tool_call_id === "string" ? message.tool_call_id : `call_${randomUUID()}`,
-        output: [{ type: "input_text", text: content }],
+        output: [{ type: "input_text", text: toolContent }],
       });
       continue;
     }
 
-    if (role === "assistant" && content.length > 0) {
-      input.push({
-        type: "message",
-        role: "assistant",
-        content: [{ type: "output_text", text: content }],
-      });
-    } else if ((role === "user" || role === "developer") && content.length > 0) {
-      input.push({
-        type: "message",
-        role,
-        content: [{ type: "input_text", text: content }],
-      });
+    if (role === "assistant") {
+      const assistantContent = typeof message.content === "string" ? message.content : "";
+      if (assistantContent.length > 0) {
+        input.push({
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: assistantContent }],
+        });
+      }
+    } else if (role === "user" || role === "developer") {
+      const contentBlocks = [];
+      if (typeof message.content === "string") {
+        if (message.content.length > 0) {
+          contentBlocks.push({ type: "input_text", text: message.content });
+        }
+      } else if (Array.isArray(message.content)) {
+        for (const part of message.content) {
+          if (!isRecord(part)) continue;
+          if (part.type === "text" && typeof part.text === "string" && part.text.length > 0) {
+            contentBlocks.push({ type: "input_text", text: part.text });
+          } else if (part.type === "image_url" && isRecord(part.image_url) && typeof part.image_url.url === "string") {
+            contentBlocks.push({ type: "input_image", image_url: part.image_url.url });
+          }
+        }
+      }
+      if (contentBlocks.length > 0) {
+        input.push({
+          type: "message",
+          role,
+          content: contentBlocks,
+        });
+      }
     }
 
     if (role === "assistant" && Array.isArray(message.tool_calls)) {
