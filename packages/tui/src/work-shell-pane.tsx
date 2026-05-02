@@ -57,6 +57,7 @@ export function WorkShellPane<
     submit,
     addClipboardAttachment,
     clearClipboardAttachments,
+    pendingClipboardAttachmentCount,
   } = useWorkShellPaneState<Attachment, State>({
     engine: props.engine,
     cwd: props.cwd,
@@ -136,6 +137,7 @@ export function WorkShellPane<
       {...(lastTurnDurationMs !== undefined ? { lastTurnDurationMs } : {})}
       activePanel={activePanel}
       {...(attachmentLines ? { attachmentLines } : {})}
+      {...(pendingClipboardAttachmentCount > 0 ? { attachmentCount: pendingClipboardAttachmentCount } : {})}
       composer={
         <Composer
           value={inputValue}

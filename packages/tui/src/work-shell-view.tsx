@@ -827,6 +827,7 @@ const WorkShellComposerDock = React.memo(function WorkShellComposerDock(props: {
   readonly mode: string;
   readonly authLabel: string;
   readonly terminalColumns?: number;
+  readonly attachmentCount?: number;
 }) {
   const dockWidth = getWorkShellDockWidth(props.terminalColumns);
   const accent = props.inputValue.trim().startsWith("/") ? W.user : W.borderStrong;
@@ -840,6 +841,8 @@ const WorkShellComposerDock = React.memo(function WorkShellComposerDock(props: {
     width: dockWidth,
   });
 
+  const badgeColor = props.attachmentCount !== undefined && props.attachmentCount >= 5 ? "#e6a817" : W.textDim;
+
   return (
     <Box marginTop={1} flexDirection="column">
       <Text color={accent}>{padDisplayLine("", dockWidth).replace(/ /g, "─")}</Text>
@@ -847,6 +850,9 @@ const WorkShellComposerDock = React.memo(function WorkShellComposerDock(props: {
         <Text backgroundColor={accent} color={W.text}>{" "}</Text>
         <Text color={W.textMuted}>{" "}</Text>
         {props.composer}
+        {props.attachmentCount !== undefined ? (
+          <Text color={badgeColor}> [{props.attachmentCount}/5]</Text>
+        ) : null}
       </Box>
       <Text color={W.border}>{padDisplayLine("", dockWidth).replace(/ /g, "─")}</Text>
       <Text color={W.textDim}>{padDisplayLine(footerLine, dockWidth)}</Text>
@@ -868,6 +874,7 @@ export function WorkShellView(props: {
   readonly currentTurnStartedAt?: number;
   readonly lastTurnDurationMs?: number;
   readonly attachmentLines?: readonly string[];
+  readonly attachmentCount?: number;
   readonly composer: React.ReactNode;
   readonly inputValue: string;
   readonly slashSuggestionCount: number;
@@ -944,6 +951,7 @@ export function WorkShellView(props: {
         mode={props.mode}
         authLabel={props.authLabel}
         {...(props.terminalColumns !== undefined ? { terminalColumns: props.terminalColumns } : {})}
+        {...(props.attachmentCount !== undefined ? { attachmentCount: props.attachmentCount } : {})}
       />
       {props.attachmentLines
         ? <WorkShellAttachmentBlock attachmentLines={props.attachmentLines} />
