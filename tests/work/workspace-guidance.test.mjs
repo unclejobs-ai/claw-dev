@@ -19,7 +19,7 @@ test("workspace guidance package seam loads AGENTS.md, CLAUDE.md, and workspace 
 
   const guidance = await loadCachedWorkspaceGuidance({ cwd: nested, userHomeDir: root });
 
-  assert.match(guidance.systemPromptAppendix, /Prefer read before edit/);
+  // AGENTS.md is excluded from systemPromptAppendix (agent orchestration, not coding guidance)
   assert.match(guidance.systemPromptAppendix, /Use slash commands/);
   assert.match(guidance.systemPromptAppendix, /Keep moving without waiting for approval/);
   assert.ok(guidance.contextSummaryLines.some((line) => /AGENTS\.md/.test(line)));
@@ -32,10 +32,10 @@ test("clearCachedWorkspaceGuidance lets /reload pick up changed guidance", async
   const root = mkdtempSync(path.join(tmpdir(), "unclecode-guidance-cache-"));
   const nested = path.join(root, "apps", "demo");
   mkdirSync(nested, { recursive: true });
-  writeFileSync(path.join(root, "AGENTS.md"), "# Agents\nPrefer read before edit.\n", "utf8");
+  writeFileSync(path.join(root, "CLAUDE.md"), "# Claude\nPrefer read before edit.\n", "utf8");
 
   const first = await loadCachedWorkspaceGuidance({ cwd: nested, userHomeDir: root });
-  writeFileSync(path.join(root, "AGENTS.md"), "# Agents\nPrefer tests first.\n", "utf8");
+  writeFileSync(path.join(root, "CLAUDE.md"), "# Claude\nPrefer tests first.\n", "utf8");
 
   const cached = await loadCachedWorkspaceGuidance({ cwd: nested, userHomeDir: root });
   assert.match(first.systemPromptAppendix, /Prefer read before edit/);

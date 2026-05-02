@@ -224,7 +224,9 @@ export async function loadWorkspaceGuidance(input: {
   }
 
   const appendixBlocks = [
-    ...sources.map((source) => `## ${source.name} (${source.path})\n${source.content.trim()}`),
+    ...sources
+      .filter((source) => source.name !== "AGENTS.md")
+      .map((source) => `## ${source.name} (${source.path})\n${source.content.trim()}`),
     ...workspaceSkills.map((skill) => `## SKILL ${skill.name} (${skill.path})\n${skill.content.trim()}`),
   ];
   const skillSummaryLines =

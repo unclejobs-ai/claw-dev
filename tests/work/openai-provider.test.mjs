@@ -381,7 +381,7 @@ test("OpenAIProvider uses the Codex backend for codex oauth runtime", async () =
   assert.equal(capturedBody.reasoning.effort, "high");
   assert.equal(capturedBody.reasoning.summary, "auto");
   assert.deepEqual(capturedBody.include, ["reasoning.encrypted_content"]);
-  assert.equal(capturedBody.instructions.includes("MyClaudeCode"), true);
+  assert.equal(capturedBody.instructions.includes("UncleCode"), true);
   assert.equal(capturedHeaders["ChatGPT-Account-Id"], "acct_123");
 });
 
