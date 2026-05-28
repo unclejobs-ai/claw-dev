@@ -28,6 +28,48 @@ export const TEAM_RUNTIME_MODES = ["local", "docker", "e2b"] as const;
 
 export type TeamRuntimeMode = (typeof TEAM_RUNTIME_MODES)[number];
 
+/**
+ * Per-lane runtime backend. Distinct from TeamRuntimeMode (sandbox container).
+ * - SDK trio: openai/anthropic/gemini — in-process provider
+ * - cursor:   @cursor/sdk Agent.prompt (in-process)
+ * - codex:    spawn `codex exec --json`
+ * - opencode: spawn `opencode run --model …`
+ * - glm:      OpenAI-compatible HTTP (Z.ai / BigModel) via baseURL override
+ * - hermes:   spawn `acpx <agent> exec` — remote-agent fan-out via ACP
+ */
+export const TEAM_LANE_RUNTIMES = [
+  "openai",
+  "anthropic",
+  "gemini",
+  "cursor",
+  "codex",
+  "opencode",
+  "glm",
+  "hermes",
+] as const;
+
+export type TeamLaneRuntime = (typeof TEAM_LANE_RUNTIMES)[number];
+
+export function isTeamLaneRuntime(value: unknown): value is TeamLaneRuntime {
+  return (
+    typeof value === "string"
+    && (TEAM_LANE_RUNTIMES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Canonical worker spec — single source of truth for both the orchestrator
+ * dispatch layer and per-lane adapters. Heterogeneous lanes per run.
+ */
+export type WorkerSpec = {
+  readonly workerId: string;
+  readonly persona: PersonaId;
+  readonly task: string;
+  readonly runtime: TeamLaneRuntime;
+  readonly model?: string;
+  readonly extras?: Readonly<Record<string, string>>;
+};
+
 export type TeamRunManifest = {
   readonly runId: string;
   readonly objective: string;

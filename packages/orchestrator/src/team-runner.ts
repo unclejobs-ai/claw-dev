@@ -16,7 +16,10 @@ import type {
   TeamRunManifest,
   TeamRunStatus,
   TeamRuntimeMode,
+  WorkerSpec as ContractWorkerSpec,
 } from "@unclecode/contracts";
+
+import { DEFAULT_LANE_RUNTIME } from "./team-lanes.js";
 import {
   createTeamRun,
   generateRunId,
@@ -52,11 +55,19 @@ export type TeamRunnerHandle = {
   dispatch(options: DispatchOptions): Promise<DispatchResult>;
 };
 
-export type WorkerSpec = {
-  readonly workerId: string;
-  readonly persona: PersonaId;
-  readonly task: string;
-};
+/**
+ * Canonical WorkerSpec lives in @unclecode/contracts. Re-exported here so
+ * existing imports from `@unclecode/orchestrator` keep resolving without
+ * downstream breakage. `runtime` is required; `model`/`extras` optional.
+ */
+export type WorkerSpec = ContractWorkerSpec;
+
+function normalizeWorkerSpec(spec: WorkerSpec): WorkerSpec {
+  // Defensive: allow .mjs callers that omit runtime to inherit the canonical
+  // default rather than crashing the spawn loop. TS callers are type-enforced.
+  if (spec.runtime !== undefined) return spec;
+  return { ...spec, runtime: DEFAULT_LANE_RUNTIME };
+}
 
 export type WorkerCommand = {
   readonly command: string;
@@ -190,9 +201,9 @@ async function runDispatch(input: {
   };
 
   const outcomes = await Promise.all(
-    input.dispatch.workers.map((spec) =>
+    input.dispatch.workers.map((rawSpec) =>
       runWorker({
-        spec,
+        spec: normalizeWorkerSpec(rawSpec),
         command: input.dispatch.workerCommand,
         env: childEnv,
         cwd: input.dispatch.cwd ?? process.cwd(),
@@ -257,7 +268,15 @@ function runWorker(input: {
       input.spec.persona,
       "--task",
       input.spec.task,
+      "--runtime",
+      input.spec.runtime,
     ];
+    if (input.spec.model !== undefined) {
+      args.push("--model", input.spec.model);
+    }
+    if (input.spec.extras !== undefined && Object.keys(input.spec.extras).length > 0) {
+      args.push("--extras", JSON.stringify(input.spec.extras));
+    }
     const child = spawn(input.command.command, args, {
       cwd: input.cwd,
       env: input.env,

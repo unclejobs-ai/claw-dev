@@ -4,9 +4,9 @@ import {
 } from "@unclecode/config-core";
 import {
   HARNESS_PRESET_IDS,
+  applyHarnessPreset,
   formatHarnessExplainLines,
   formatHarnessStatusLines,
-  getHarnessPresetPatch,
   inspectHarnessStatus,
   isHarnessPresetId,
 } from "./harness.js";
@@ -15,7 +15,7 @@ import {
   UNCLECODE_COMMAND_NAME,
 } from "@unclecode/contracts";
 import type { ModeProfileId } from "@unclecode/contracts";
-import { loadExtensionConfigOverlays } from "@unclecode/orchestrator";
+import { loadExtensionConfigOverlays, runRustCommand } from "@unclecode/orchestrator";
 import {
   buildOpenAIAuthorizationUrl,
   completeOpenAIBrowserLogin,
@@ -23,10 +23,8 @@ import {
   completeOpenAIDeviceLogin,
   createOpenAIPkcePair,
   formatOpenAIAuthStatus,
-  clearOpenAICredentials,
   resolveOpenAIAuthStatus,
   resolveReusableOpenAIOAuthClientId,
-  writeOpenAICredentials,
 } from "@unclecode/providers";
 import { Command, Option } from "commander";
 import os from "node:os";
@@ -108,7 +106,6 @@ type AuthLoginMethodSelection = {
 
 type ApiKeyStdinLoginInput = {
   readonly options: AuthLoginCommandOptions;
-  readonly credentialsPath: string;
 };
 
 type DeviceAuthLoginInput = {
@@ -222,15 +219,12 @@ async function handleApiKeyStdinLogin(input: ApiKeyStdinLoginInput): Promise<boo
     throw new Error("No API key received on stdin.");
   }
 
-  await writeOpenAICredentials({
-    credentialsPath: input.credentialsPath,
-    credentials: {
-      authType: "api-key",
-      apiKey,
-      organizationId: input.options.org?.trim() || null,
-      projectId: input.options.project?.trim() || null,
-    },
-  });
+  await runRustCommand(
+    ["rust", "auth", "save-api-key", input.options.org?.trim() || "-", input.options.project?.trim() || "-"],
+    process.cwd(),
+    apiKey,
+    process.env,
+  );
   process.stdout.write("API key login saved.\n");
   process.stdout.write("Source: api-key-file\n");
   return true;
@@ -478,8 +472,7 @@ async function handleAuthStatusCommand(): Promise<void> {
 }
 
 async function handleAuthLogoutCommand(): Promise<void> {
-  const credentialsPath = resolveOpenAICredentialsPath();
-  await clearOpenAICredentials({ credentialsPath });
+  await runRustCommand(["rust", "auth", "logout"], process.cwd(), undefined, process.env);
   const status = await resolveOpenAIAuthStatus({ env: process.env });
   for (const line of formatLogoutResult(status)) {
     process.stdout.write(`${line}\n`);
@@ -652,7 +645,7 @@ function registerAuthCommands(program: Command): void {
     .option("--print", "Print the login URL explicitly (default browser behavior today)")
     .action(async (options: AuthLoginCommandOptions) => {
       const credentialsPath = resolveOpenAICredentialsPath();
-      if (await handleApiKeyStdinLogin({ options, credentialsPath })) {
+      if (await handleApiKeyStdinLogin({ options })) {
         return;
       }
 
@@ -809,7 +802,6 @@ function registerHarnessCommands(program: Command): void {
         return;
       }
 
-      const patch = getHarnessPresetPatch("yolo");
       const status = inspectHarnessStatus(process.cwd());
 
       if (!status.exists) {
@@ -819,21 +811,16 @@ function registerHarnessCommands(program: Command): void {
         return;
       }
 
-      const { readFileSync, writeFileSync } = await import("node:fs");
-      let content = readFileSync(status.configPath, "utf8");
-
-      for (const [key, value] of Object.entries(patch)) {
-        const pattern = new RegExp(`^(${key}\\s*=\\s*)"[^"]*"`, "m");
-        if (pattern.test(content)) {
-          content = content.replace(pattern, `$1"${value}"`);
-          process.stdout.write(`  ${key} → "${value}"\n`);
+      const changes = applyHarnessPreset(process.cwd(), preset);
+      for (const change of changes) {
+        if (change.changed) {
+          process.stdout.write(`  ${change.key} -> "${change.value}"\n`);
         } else {
-          process.stdout.write(`  ${key} not found in config (skipped)\n`);
+          process.stdout.write(`  ${change.key} not found in config (skipped)\n`);
         }
       }
 
-      writeFileSync(status.configPath, content, "utf8");
-      process.stdout.write(`\nYOLO preset applied to ${status.configPath}\n`);
+      process.stdout.write(`\n${preset} preset applied to ${status.configPath}\n`);
 
       const updated = inspectHarnessStatus(process.cwd());
       process.stdout.write("\nCurrent status:\n");
@@ -850,7 +837,11 @@ function registerTeamCommands(program: import("commander").Command): void {
     .command("run <objective...>")
     .description("Start a team run and record it under .data/team-runs/<runId>")
     .option("--persona <id>", "coder|builder|hardener|auditor|agentless-fix|agentless-then-agent|mini", "coder")
-    .option("--lanes <n>", "Parallel worker count", "1")
+    .option(
+      "--lanes <spec>",
+      "Lane count (e.g. 4) or comma-list of lane specs (e.g. cursor,codex,opencode:anthropic/claude-sonnet-4-6,hermes::agent=codex)",
+      "1",
+    )
     .option("--gate <level>", "strict|warn|off", "strict")
     .option("--runtime <mode>", "local|docker|e2b", "local")
     .option("--record <runId>", "Force a specific RUN_ID (resume / external dispatch)")
@@ -868,19 +859,58 @@ function registerTeamCommands(program: import("commander").Command): void {
     .requiredOption("--persona <id>", "coder|builder|hardener|auditor|agentless-fix|agentless-then-agent|mini")
     .requiredOption("--worker-id <id>", "Stable worker id within the run")
     .requiredOption("--task <text>", "Task description handed to the persona")
-    .action(async (options: { persona: string; workerId: string; task: string }) => {
-      const workerModule = await import("./team-worker.js");
-      const { handleTeamWorker } = workerModule;
-      const { PERSONA_IDS } = await import("@unclecode/contracts");
-      if (!PERSONA_IDS.includes(options.persona as (typeof PERSONA_IDS)[number])) {
-        throw new Error(`Unknown persona "${options.persona}". Valid: ${PERSONA_IDS.join(", ")}`);
-      }
-      await handleTeamWorker({
-        persona: options.persona as (typeof PERSONA_IDS)[number],
-        workerId: options.workerId,
-        task: options.task,
-      });
-    });
+    .option("--runtime <id>", "Lane runtime (openai|anthropic|gemini|cursor|codex|opencode|glm|hermes)", "openai")
+    .option("--model <id>", "Override model identifier passed to the lane adapter")
+    .option("--extras <json>", "Per-lane extras as a JSON object (e.g. '{\"channel\":\"#review\"}')")
+    .action(
+      async (options: {
+        persona: string;
+        workerId: string;
+        task: string;
+        runtime?: string;
+        model?: string;
+        extras?: string;
+      }) => {
+        const workerModule = await import("./team-worker.js");
+        const { handleTeamWorker } = workerModule;
+        const { PERSONA_IDS, isTeamLaneRuntime, TEAM_LANE_RUNTIMES } = await import("@unclecode/contracts");
+        if (!PERSONA_IDS.includes(options.persona as (typeof PERSONA_IDS)[number])) {
+          throw new Error(`Unknown persona "${options.persona}". Valid: ${PERSONA_IDS.join(", ")}`);
+        }
+        const runtime = options.runtime ?? "openai";
+        if (!isTeamLaneRuntime(runtime)) {
+          throw new Error(`Unknown runtime "${runtime}". Valid: ${TEAM_LANE_RUNTIMES.join(", ")}`);
+        }
+        let extras: Record<string, string> | undefined;
+        if (options.extras !== undefined && options.extras.trim().length > 0) {
+          try {
+            const parsed = JSON.parse(options.extras) as unknown;
+            if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+              throw new Error("not a JSON object");
+            }
+            extras = {};
+            for (const [key, value] of Object.entries(parsed)) {
+              if (typeof value !== "string") {
+                throw new Error(`extras.${key} must be a string`);
+              }
+              extras[key] = value;
+            }
+          } catch (err) {
+            throw new Error(
+              `--extras must be a JSON object of string values (${err instanceof Error ? err.message : String(err)})`,
+            );
+          }
+        }
+        await handleTeamWorker({
+          persona: options.persona as (typeof PERSONA_IDS)[number],
+          workerId: options.workerId,
+          task: options.task,
+          runtime,
+          ...(options.model !== undefined ? { model: options.model } : {}),
+          ...(extras !== undefined ? { extras } : {}),
+        });
+      },
+    );
 
   team
     .command("ls")
@@ -913,5 +943,13 @@ function registerTeamCommands(program: import("commander").Command): void {
     .action(async (runId: string) => {
       const teamModule = await import("./team.js");
       teamModule.handleTeamAbort(runId);
+    });
+
+  team
+    .command("doctor")
+    .description("Preflight every lane runtime — show which lanes are usable on this machine")
+    .action(async () => {
+      const teamModule = await import("./team.js");
+      teamModule.handleTeamDoctor();
     });
 }

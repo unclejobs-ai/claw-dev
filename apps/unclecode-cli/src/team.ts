@@ -9,7 +9,10 @@ import { join } from "node:path";
 import {
   generateRunIdForCli,
   listTeamRuns,
+  parseLanesSpec,
+  runLaneDoctor,
   startTeamRun,
+  type ParsedLaneSpec,
 } from "@unclecode/orchestrator";
 import {
   PERSONA_IDS,
@@ -45,7 +48,7 @@ export async function handleTeamRun(objective: string[], options: RunOptions): P
   const persona = parsePersona(options.persona ?? "coder");
   const gate = parseGate(options.gate ?? "strict");
   const runtime = parseRuntime(options.runtime ?? "local");
-  const lanes = parseLanes(options.lanes ?? "1");
+  const laneSpecs = parseLanesSpec(options.lanes ?? "1");
   const dataRoot = resolveDataRoot();
   const runId = options.record?.trim() || generateRunIdForCli();
 
@@ -54,7 +57,7 @@ export async function handleTeamRun(objective: string[], options: RunOptions): P
     runId,
     objective: objective.join(" "),
     persona,
-    lanes,
+    lanes: laneSpecs.length,
     gate,
     runtime,
     workspaceRoot: process.cwd(),
@@ -67,7 +70,9 @@ export async function handleTeamRun(objective: string[], options: RunOptions): P
   } else {
     process.stdout.write(`RUN_ID=${handle.runId}\n`);
     process.stdout.write(`RUN_ROOT=${handle.runRoot}\n`);
-    process.stdout.write(`persona=${persona} lanes=${lanes} gate=${gate} runtime=${runtime}\n`);
+    process.stdout.write(
+      `persona=${persona} lanes=${formatLanesSummary(laneSpecs)} gate=${gate} runtime=${runtime}\n`,
+    );
   }
 
   if (!options.dispatch) {
@@ -77,15 +82,19 @@ export async function handleTeamRun(objective: string[], options: RunOptions): P
 
   try {
     const cliEntry = resolveCliEntry();
-    const workers = Array.from({ length: lanes }, (_, idx) => ({
+    const task = objective.join(" ");
+    const workers = laneSpecs.map((lane, idx) => ({
       workerId: `w${idx + 1}`,
       persona,
-      task: objective.join(" "),
+      task,
+      runtime: lane.runtime,
+      ...(lane.model !== undefined ? { model: lane.model } : {}),
+      ...(lane.extras !== undefined ? { extras: lane.extras } : {}),
     }));
     const timeoutMs = parseTimeout(options.workerTimeout ?? "600000");
 
     if (!options.quiet) {
-      process.stdout.write(`Dispatching ${lanes} worker(s)…\n`);
+      process.stdout.write(`Dispatching ${workers.length} worker(s)…\n`);
     }
     const result = await handle.dispatch({
       workerCommand: { command: process.execPath, args: [cliEntry, "team", "worker"] },
@@ -195,6 +204,17 @@ export function handleTeamInspect(runId: string, options: { readonly verify?: bo
   }
 }
 
+export function handleTeamDoctor(): void {
+  const report = runLaneDoctor();
+  for (const lane of report.lanes) {
+    const tag = lane.status === "ok" ? "OK   " : "MISS ";
+    const detail = lane.reason ? `  — ${lane.reason}` : "";
+    process.stdout.write(`${tag} ${lane.runtime.padEnd(10)}${detail}\n`);
+  }
+  process.stdout.write(`\nReady: ${report.summary.ok}/${report.lanes.length}  Missing: ${report.summary.missing}\n`);
+  if (report.summary.ok === 0) process.exitCode = 1;
+}
+
 export function handleTeamAbort(runId: string): void {
   const dataRoot = resolveDataRoot();
   const runs = listTeamRuns(dataRoot);
@@ -259,12 +279,11 @@ function parseRuntime(value: string): TeamRuntimeMode {
   return value as TeamRuntimeMode;
 }
 
-function parseLanes(value: string): number {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 16) {
-    throw new Error(`Invalid lanes "${value}". Expected 1..16.`);
-  }
-  return parsed;
+function formatLanesSummary(specs: readonly ParsedLaneSpec[]): string {
+  const counts = new Map<string, number>();
+  for (const s of specs) counts.set(s.runtime, (counts.get(s.runtime) ?? 0) + 1);
+  const parts = [...counts.entries()].map(([k, v]) => (v > 1 ? `${k}x${v}` : k));
+  return `${specs.length} [${parts.join(",")}]`;
 }
 
 function resolveDataRoot(): string {

@@ -1,24 +1,33 @@
-import { createHash } from "node:crypto";
+/**
+ * Team worker entrypoint — spawned by TeamRunner as a child process and
+ * bound to UNCLECODE_TEAM_RUN_ID / UNCLECODE_TEAM_RUN_ROOT via env. Routes
+ * the task through the LaneAdapter for the requested runtime (SDK trio,
+ * Cursor SDK, Codex CLI, opencode CLI, GLM HTTP, Hermes acpx) and emits
+ * the legacy WORKER_ID/PERSONA/SUBMISSION/<marker> envelope on stdout so
+ * the runner's classifier stays untouched.
+ */
 
 import {
-  AnthropicProvider,
-  GeminiProvider,
-  OpenAIProvider,
   TeamBinding,
+  formatWorkerEnvelope,
+  getLaneAdapter,
   getPersonaConfig,
   readBindingFromEnv,
-  runTeamMiniLoop,
+  runRustCommand,
 } from "@unclecode/orchestrator";
-import type { LlmProvider } from "@unclecode/orchestrator";
-import type { PersonaId } from "@unclecode/contracts";
+export { detectProviderForModel } from "@unclecode/providers";
+import type { PersonaId, TeamLaneRuntime } from "@unclecode/contracts";
+import { isTeamLaneRuntime } from "@unclecode/contracts";
+import { DEFAULT_LANE_RUNTIME } from "@unclecode/orchestrator";
 
 export type TeamWorkerOptions = {
   readonly workerId: string;
   readonly persona: PersonaId;
   readonly task: string;
+  readonly runtime: TeamLaneRuntime;
+  readonly model?: string;
+  readonly extras?: Readonly<Record<string, string>>;
 };
-
-const DEFAULT_TEAM_WORKER_MODEL = "gpt-4.1-mini";
 
 export async function handleTeamWorker(options: TeamWorkerOptions): Promise<void> {
   const bindingArgs = readBindingFromEnv();
@@ -29,111 +38,80 @@ export async function handleTeamWorker(options: TeamWorkerOptions): Promise<void
     process.exit(2);
   }
 
+  const runtime = options.runtime ?? DEFAULT_LANE_RUNTIME;
+  if (!isTeamLaneRuntime(runtime)) {
+    process.stderr.write(`team worker: unknown runtime "${runtime}".\n`);
+    process.exit(2);
+  }
+
   const binding = new TeamBinding({ ...bindingArgs, role: "worker" });
   const config = getPersonaConfig(options.persona);
-  const taskHash = createHash("sha256").update(options.task).digest("hex");
 
-  binding.publish({
-    type: "team_step",
-    runId: binding.runId,
-    workerId: options.workerId,
-    stepIndex: 0,
-    action: { tool: "task_received", argHash: taskHash },
-    timestamp: new Date().toISOString(),
-  });
-
+  // Dry-run path used by tests + sandboxed CI: skip the live adapter call
+  // AND the Rust sha256 spawn (cold checkouts may not have the binary
+  // built). Echo the task back so the envelope shape can be exercised.
   const liveDisabled = process.env.UNCLECODE_TEAM_WORKER_LIVE === "0";
-  const model = process.env.UNCLECODE_TEAM_WORKER_MODEL?.trim() || DEFAULT_TEAM_WORKER_MODEL;
-  const providerName = detectProviderForModel(model);
-  const apiKey = readApiKeyForProvider(providerName);
-
-  if (!apiKey || liveDisabled) {
-    process.stdout.write(`WORKER_ID=${options.workerId}\n`);
-    process.stdout.write(`PERSONA=${options.persona}\n`);
-    process.stdout.write(`SUBMISSION:${truncate(options.task, 4096)}\n`);
-    process.stdout.write(`${config.submitMarker}\n`);
+  if (liveDisabled) {
+    process.stdout.write(
+      `${formatWorkerEnvelope({
+        workerId: options.workerId,
+        persona: options.persona,
+        submission: options.task,
+        submitMarker: config.submitMarker,
+      })}\n`,
+    );
     process.exit(0);
-    return;
   }
 
-  const provider = buildProvider(providerName, {
-    apiKey,
-    model,
-    systemPrompt: config.systemPrompt,
-  });
+  const emitEnvelope = (submission: string): void => {
+    process.stdout.write(
+      `${formatWorkerEnvelope({
+        workerId: options.workerId,
+        persona: options.persona,
+        submission,
+        submitMarker: config.submitMarker,
+      })}\n`,
+    );
+  };
 
-  const result = await runTeamMiniLoop({
-    workerId: options.workerId,
-    persona: options.persona,
-    task: options.task,
-    binding,
-    provider,
-    cwd: process.cwd(),
-  });
+  // Wrap the entire live path — including the Rust sha256 spawn, initial
+  // checkpoint publish, and adapter acquisition — in a single try/catch so
+  // any exception still emits the legacy 4-line envelope. Otherwise a
+  // pre-adapter throw would leave TeamRunner without a parseable result.
+  try {
+    const taskHash = (await runRustCommand(["rust", "sha256"], process.cwd(), options.task)).trim();
 
-  process.stdout.write(`WORKER_ID=${options.workerId}\n`);
-  process.stdout.write(`PERSONA=${options.persona}\n`);
-  process.stdout.write(`SUBMISSION:${truncate(result.submission, 4096)}\n`);
-  process.stdout.write(`${config.submitMarker}\n`);
-  process.exit(result.status === "submitted" ? 0 : 1);
-}
-
-function truncate(text: string, limit: number): string {
-  return text.length <= limit ? text : `${text.slice(0, limit)}…`;
-}
-
-export type LiveProvider = "openai" | "anthropic" | "gemini";
-
-export function detectProviderForModel(model: string): LiveProvider {
-  const lower = model.toLowerCase();
-  if (lower.startsWith("claude")) {
-    return "anthropic";
-  }
-  if (lower.startsWith("gemini")) {
-    return "gemini";
-  }
-  return "openai";
-}
-
-function readApiKeyForProvider(name: LiveProvider): string | undefined {
-  const envName =
-    name === "anthropic"
-      ? "ANTHROPIC_API_KEY"
-      : name === "gemini"
-        ? "GEMINI_API_KEY"
-        : "OPENAI_API_KEY";
-  return process.env[envName]?.trim();
-}
-
-function buildProvider(
-  name: LiveProvider,
-  args: { apiKey: string; model: string; systemPrompt: string },
-): LlmProvider {
-  if (name === "anthropic") {
-    return new AnthropicProvider({
-      apiKey: args.apiKey,
-      model: args.model,
-      cwd: process.cwd(),
-      systemPrompt: args.systemPrompt,
+    binding.publish({
+      type: "team_step",
+      runId: binding.runId,
+      workerId: options.workerId,
+      stepIndex: 0,
+      action: { tool: "task_received", argHash: taskHash },
+      timestamp: new Date().toISOString(),
     });
-  }
-  if (name === "gemini") {
-    return new GeminiProvider({
-      apiKey: args.apiKey,
-      model: args.model,
+
+    const adapter = getLaneAdapter(runtime);
+    const spec = {
+      workerId: options.workerId,
+      persona: options.persona,
+      task: options.task,
+      runtime,
+      ...(options.model !== undefined ? { model: options.model } : {}),
+      ...(options.extras !== undefined ? { extras: options.extras } : {}),
+    };
+
+    const result = await adapter.run(spec, {
+      binding,
       cwd: process.cwd(),
-      systemPrompt: args.systemPrompt,
+      env: process.env,
+      systemPrompt: config.systemPrompt,
     });
+    emitEnvelope(result.submission);
+    process.exit(result.ok ? 0 : 1);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`team worker: ${reason}\n`);
+    emitEnvelope(reason);
+    process.exit(1);
   }
-  return new OpenAIProvider({
-    apiKey: args.apiKey,
-    model: args.model,
-    cwd: process.cwd(),
-    reasoning: {
-      effort: "unsupported",
-      source: "model-capability",
-      support: { status: "unsupported", supportedEfforts: [] },
-    },
-    systemPrompt: args.systemPrompt,
-  });
 }
