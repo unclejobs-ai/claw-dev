@@ -35,7 +35,9 @@ test("dispatch forwards --runtime / --model / --extras per worker", async () => 
     });
     handle.start();
 
-    const result = await handle.dispatch({
+    let result;
+    try {
+      result = await handle.dispatch({
       workerCommand: { command: process.execPath, args: [workerPath] },
       workers: [
         {
@@ -63,7 +65,9 @@ test("dispatch forwards --runtime / --model / --extras per worker", async () => 
       ],
       perWorkerTimeoutMs: 30_000,
     });
-    handle.release();
+    } finally {
+      handle.release();
+    }
 
     assert.equal(result.status, "accepted", "all workers exit 0");
 

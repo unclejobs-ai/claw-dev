@@ -52,13 +52,21 @@ export function runLaneDoctor(input: LaneDoctorInput = {}): LaneDoctorReport {
   let ok = 0;
   let missing = 0;
   for (const id of TEAM_LANE_RUNTIMES) {
-    const adapter = buildAdapterForDoctor(id, which);
-    const result = adapter.preflight(env);
-    if (result.status === "ok") {
-      lanes.push({ runtime: id, status: "ok" });
-      ok += 1;
-    } else {
-      lanes.push({ runtime: id, status: "missing", reason: result.reason });
+    // Isolate per-lane failures so one adapter throwing in its preflight
+    // (e.g. a misconfigured `which`) doesn't abort the rest of the sweep.
+    try {
+      const adapter = buildAdapterForDoctor(id, which);
+      const result = adapter.preflight(env);
+      if (result.status === "ok") {
+        lanes.push({ runtime: id, status: "ok" });
+        ok += 1;
+      } else {
+        lanes.push({ runtime: id, status: "missing", reason: result.reason });
+        missing += 1;
+      }
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      lanes.push({ runtime: id, status: "missing", reason: `preflight threw: ${reason}` });
       missing += 1;
     }
   }

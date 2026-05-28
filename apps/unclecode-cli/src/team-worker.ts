@@ -63,54 +63,55 @@ export async function handleTeamWorker(options: TeamWorkerOptions): Promise<void
     process.exit(0);
   }
 
-  const taskHash = (await runRustCommand(["rust", "sha256"], process.cwd(), options.task)).trim();
-
-  binding.publish({
-    type: "team_step",
-    runId: binding.runId,
-    workerId: options.workerId,
-    stepIndex: 0,
-    action: { tool: "task_received", argHash: taskHash },
-    timestamp: new Date().toISOString(),
-  });
-
-  const adapter = getLaneAdapter(runtime);
-  const spec = {
-    workerId: options.workerId,
-    persona: options.persona,
-    task: options.task,
-    runtime,
-    ...(options.model !== undefined ? { model: options.model } : {}),
-    ...(options.extras !== undefined ? { extras: options.extras } : {}),
+  const emitEnvelope = (submission: string): void => {
+    process.stdout.write(
+      `${formatWorkerEnvelope({
+        workerId: options.workerId,
+        persona: options.persona,
+        submission,
+        submitMarker: config.submitMarker,
+      })}\n`,
+    );
   };
 
+  // Wrap the entire live path — including the Rust sha256 spawn, initial
+  // checkpoint publish, and adapter acquisition — in a single try/catch so
+  // any exception still emits the legacy 4-line envelope. Otherwise a
+  // pre-adapter throw would leave TeamRunner without a parseable result.
   try {
+    const taskHash = (await runRustCommand(["rust", "sha256"], process.cwd(), options.task)).trim();
+
+    binding.publish({
+      type: "team_step",
+      runId: binding.runId,
+      workerId: options.workerId,
+      stepIndex: 0,
+      action: { tool: "task_received", argHash: taskHash },
+      timestamp: new Date().toISOString(),
+    });
+
+    const adapter = getLaneAdapter(runtime);
+    const spec = {
+      workerId: options.workerId,
+      persona: options.persona,
+      task: options.task,
+      runtime,
+      ...(options.model !== undefined ? { model: options.model } : {}),
+      ...(options.extras !== undefined ? { extras: options.extras } : {}),
+    };
+
     const result = await adapter.run(spec, {
       binding,
       cwd: process.cwd(),
       env: process.env,
       systemPrompt: config.systemPrompt,
     });
-    process.stdout.write(
-      `${formatWorkerEnvelope({
-        workerId: options.workerId,
-        persona: options.persona,
-        submission: result.submission,
-        submitMarker: config.submitMarker,
-      })}\n`,
-    );
+    emitEnvelope(result.submission);
     process.exit(result.ok ? 0 : 1);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     process.stderr.write(`team worker: ${reason}\n`);
-    process.stdout.write(
-      `${formatWorkerEnvelope({
-        workerId: options.workerId,
-        persona: options.persona,
-        submission: reason,
-        submitMarker: config.submitMarker,
-      })}\n`,
-    );
+    emitEnvelope(reason);
     process.exit(1);
   }
 }

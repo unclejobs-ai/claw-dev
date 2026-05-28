@@ -65,7 +65,14 @@ export function createOpencodeAdapter(args: CreateOpencodeAdapterArgs = {}): Lan
         const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`;
         return { ok: false, submission: detail };
       }
-      return { ok: true, submission: result.stdout.trim() };
+      const submission = result.stdout.trim();
+      if (submission.length === 0) {
+        return {
+          ok: false,
+          submission: `opencode run exited 0 but produced no output${result.stderr.trim() ? `: ${result.stderr.trim()}` : ""}`,
+        };
+      }
+      return { ok: true, submission };
     },
   };
 }

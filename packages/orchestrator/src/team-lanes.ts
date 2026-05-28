@@ -81,24 +81,36 @@ function parseSingleLaneToken(token: string): ParsedLaneSpec | null {
     runtime,
   };
 
-  const modelPart = parts[1]?.trim();
-  if (modelPart && modelPart.length > 0) {
+  // Detect extras segment heuristically: a colon segment is treated as
+  // extras only when it contains `=` (the k=v syntax). Otherwise the
+  // segment is part of the model id, which can legitimately contain `:`
+  // (e.g. `hf/llama:3.1:instruct`, `kimi:latest`).
+  const extrasIdx = parts.findIndex((p, i) => i >= 2 && p.includes("="));
+
+  let modelPart: string;
+  let extrasPart: string;
+  if (extrasIdx >= 2) {
+    modelPart = parts.slice(1, extrasIdx).join(":").trim();
+    extrasPart = parts.slice(extrasIdx).join(":").trim();
+  } else {
+    modelPart = parts.slice(1).join(":").trim();
+    extrasPart = "";
+  }
+
+  if (modelPart.length > 0) {
     spec.model = modelPart;
   }
 
-  if (parts.length >= 3) {
-    const extrasPart = parts.slice(2).join(":").trim();
-    if (extrasPart.length > 0) {
-      const extras: Record<string, string> = {};
-      for (const kv of extrasPart.split(";")) {
-        const eq = kv.indexOf("=");
-        if (eq < 0) continue;
-        const key = kv.slice(0, eq).trim();
-        const value = kv.slice(eq + 1).trim();
-        if (key.length > 0) extras[key] = value;
-      }
-      if (Object.keys(extras).length > 0) spec.extras = extras;
+  if (extrasPart.length > 0) {
+    const extras: Record<string, string> = {};
+    for (const kv of extrasPart.split(";")) {
+      const eq = kv.indexOf("=");
+      if (eq < 0) continue;
+      const key = kv.slice(0, eq).trim();
+      const value = kv.slice(eq + 1).trim();
+      if (key.length > 0) extras[key] = value;
     }
+    if (Object.keys(extras).length > 0) spec.extras = extras;
   }
 
   return spec;

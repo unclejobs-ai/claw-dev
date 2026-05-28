@@ -27,6 +27,7 @@ export type GlmFetchInit = {
   readonly method: string;
   readonly headers: Record<string, string>;
   readonly body: string;
+  readonly signal?: AbortSignal;
 };
 
 export type GlmFetchFn = (url: string, init: GlmFetchInit) => Promise<GlmFetchResponse>;
@@ -44,6 +45,7 @@ function defaultFetch(): GlmFetchFn {
       method: init.method,
       headers: init.headers,
       body: init.body,
+      ...(init.signal !== undefined ? { signal: init.signal } : {}),
     });
     return {
       ok: response.ok,
@@ -92,26 +94,45 @@ export function createGlmAdapter(args: CreateGlmAdapterArgs = {}): LaneAdapter {
       messages.push({ role: "user", content: spec.task });
       const body = JSON.stringify({ model, messages });
 
-      const response = await fetchFn(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body,
-      });
-
-      if (!response.ok) {
-        const detail = await response.text().catch(() => "");
-        return {
-          ok: false,
-          submission: `glm http ${response.status}${detail ? `: ${detail}` : ""}`,
-        };
+      // Enforce ctx.timeoutMs via AbortController so a stuck GLM endpoint
+      // doesn't hang the worker indefinitely.
+      const controller = new AbortController();
+      let timer: NodeJS.Timeout | null = null;
+      if (ctx.timeoutMs !== undefined && ctx.timeoutMs > 0) {
+        timer = setTimeout(() => controller.abort(), ctx.timeoutMs);
+        if (typeof timer.unref === "function") timer.unref();
       }
 
-      const data = (await response.json()) as GlmChatResponse;
-      const content = data.choices?.[0]?.message?.content ?? "";
-      return { ok: content.length > 0, submission: content };
+      try {
+        const response = await fetchFn(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body,
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          const detail = await response.text().catch(() => "");
+          return {
+            ok: false,
+            submission: `glm http ${response.status}${detail ? `: ${detail}` : ""}`,
+          };
+        }
+
+        const data = (await response.json()) as GlmChatResponse;
+        const content = data.choices?.[0]?.message?.content ?? "";
+        return { ok: content.length > 0, submission: content };
+      } catch (err) {
+        if (controller.signal.aborted) {
+          throw new Error(`glm lane worker ${spec.workerId} timed out after ${ctx.timeoutMs}ms`);
+        }
+        throw err;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
     },
   };
 }

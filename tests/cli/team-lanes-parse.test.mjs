@@ -65,6 +65,32 @@ test("parseLanesSpec rejects zero or negative numeric", () => {
   assert.throws(() => parseLanesSpec("-1"), /invalid/i);
 });
 
+test("parseLanesSpec enforces 16-lane cap for numeric form", () => {
+  assert.equal(parseLanesSpec("16").length, 16);
+  assert.throws(() => parseLanesSpec("17"), /16|max|cap/i);
+});
+
+test("parseLanesSpec enforces 16-lane cap for token-list form", () => {
+  const sixteen = Array.from({ length: 16 }, () => "codex").join(",");
+  const seventeen = Array.from({ length: 17 }, () => "codex").join(",");
+  assert.equal(parseLanesSpec(sixteen).length, 16);
+  assert.throws(() => parseLanesSpec(seventeen), /16|max|cap|too many/i);
+});
+
+test("parseLanesSpec preserves colons in model id without extras suffix", () => {
+  const [spec] = parseLanesSpec("opencode:hf/llama:3.1:instruct");
+  assert.equal(spec.runtime, "opencode");
+  assert.equal(spec.model, "hf/llama:3.1:instruct");
+  assert.equal(spec.extras, undefined);
+});
+
+test("parseLanesSpec keeps model and extras separate when both contain colons", () => {
+  const [spec] = parseLanesSpec("opencode:hf/llama:3.1:instruct:agent=codex");
+  assert.equal(spec.runtime, "opencode");
+  assert.equal(spec.model, "hf/llama:3.1:instruct");
+  assert.deepEqual(spec.extras, { agent: "codex" });
+});
+
 test("parseLanesSpec trims whitespace around tokens", () => {
   const specs = parseLanesSpec(" cursor , codex ");
   assert.equal(specs.length, 2);

@@ -73,17 +73,21 @@ test("multi-runtime dispatch dry-run: 3 heterogeneous lanes, all complete with e
     });
     handle.start();
 
-    const result = await handle.dispatch({
-      workerCommand: { command: process.execPath, args: ["--import=tsx", workerPath] },
-      workers: [
-        { workerId: "w1", persona: "coder", task: "summarize", runtime: "cursor", model: "composer-2.5" },
-        { workerId: "w2", persona: "coder", task: "summarize", runtime: "codex", model: "gpt-5.5" },
-        { workerId: "w3", persona: "coder", task: "summarize", runtime: "opencode", model: "kimi-k2.6" },
-      ],
-      perWorkerTimeoutMs: 30_000,
-      extraEnv: { UNCLECODE_TEAM_WORKER_LIVE: "0" },
-    });
-    handle.release();
+    let result;
+    try {
+      result = await handle.dispatch({
+        workerCommand: { command: process.execPath, args: ["--import=tsx", workerPath] },
+        workers: [
+          { workerId: "w1", persona: "coder", task: "summarize", runtime: "cursor", model: "composer-2.5" },
+          { workerId: "w2", persona: "coder", task: "summarize", runtime: "codex", model: "gpt-5.5" },
+          { workerId: "w3", persona: "coder", task: "summarize", runtime: "opencode", model: "kimi-k2.6" },
+        ],
+        perWorkerTimeoutMs: 30_000,
+        extraEnv: { UNCLECODE_TEAM_WORKER_LIVE: "0" },
+      });
+    } finally {
+      handle.release();
+    }
 
     assert.equal(result.status, "accepted");
     assert.equal(result.outcomes.length, 3);
@@ -120,21 +124,25 @@ test("multi-runtime dispatch dry-run: hermes lane carries extras through env", a
     });
     handle.start();
 
-    const result = await handle.dispatch({
-      workerCommand: { command: process.execPath, args: ["--import=tsx", workerPath] },
-      workers: [
-        {
-          workerId: "w1",
-          persona: "coder",
-          task: "review",
-          runtime: "hermes",
-          extras: { channel: "#review", agent: "codex" },
-        },
-      ],
-      perWorkerTimeoutMs: 30_000,
-      extraEnv: { UNCLECODE_TEAM_WORKER_LIVE: "0" },
-    });
-    handle.release();
+    let result;
+    try {
+      result = await handle.dispatch({
+        workerCommand: { command: process.execPath, args: ["--import=tsx", workerPath] },
+        workers: [
+          {
+            workerId: "w1",
+            persona: "coder",
+            task: "review",
+            runtime: "hermes",
+            extras: { channel: "#review", agent: "codex" },
+          },
+        ],
+        perWorkerTimeoutMs: 30_000,
+        extraEnv: { UNCLECODE_TEAM_WORKER_LIVE: "0" },
+      });
+    } finally {
+      handle.release();
+    }
 
     assert.equal(result.status, "accepted");
     assert.match(result.outcomes[0].stdout, /runtime=hermes/);

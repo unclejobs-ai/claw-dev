@@ -837,7 +837,11 @@ function registerTeamCommands(program: import("commander").Command): void {
     .command("run <objective...>")
     .description("Start a team run and record it under .data/team-runs/<runId>")
     .option("--persona <id>", "coder|builder|hardener|auditor|agentless-fix|agentless-then-agent|mini", "coder")
-    .option("--lanes <n>", "Parallel worker count", "1")
+    .option(
+      "--lanes <spec>",
+      "Lane count (e.g. 4) or comma-list of lane specs (e.g. cursor,codex,opencode:anthropic/claude-sonnet-4-6,hermes::agent=codex)",
+      "1",
+    )
     .option("--gate <level>", "strict|warn|off", "strict")
     .option("--runtime <mode>", "local|docker|e2b", "local")
     .option("--record <runId>", "Force a specific RUN_ID (resume / external dispatch)")
