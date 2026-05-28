@@ -4,7 +4,8 @@
  *
  * Same claimAll/releaseAll semantics as the in-process registry, but the
  * source of truth lives on disk so cross-process workers (children spawned
- * by team-runner, OMX lanes, Hermes acpx) can coordinate.
+ * by team-runner, plus any external lane adapters that run their own
+ * subprocesses) can coordinate.
  *
  * Lock file is created atomically with `wx` open; conflicts surface as
  * Errors with `code = "EEXIST"` so callers can decide between waiting and
@@ -12,15 +13,15 @@
  */
 
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
-import { createHash } from "node:crypto";
 import { join } from "node:path";
+import { runRustCommandSync } from "./rust-command.js";
 
 export type DiskClaimResult =
   | { readonly ok: true; readonly claimed: ReadonlyArray<string> }
   | { readonly ok: false; readonly conflictPath: string; readonly conflictHolder: string };
 
 function lockPath(runRoot: string, filePath: string): string {
-  const hash = createHash("sha256").update(filePath).digest("hex");
+  const hash = runRustCommandSync(["rust", "sha256"], runRoot, filePath).trim();
   return join(runRoot, "locks", `${hash}.lock`);
 }
 
